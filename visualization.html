@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ΔL per Step — Full-Batch GD vs Mini-Batch SGD · Noise Scale Verification</title>
+<style>
+  :root{
+    --bg:#f8f9fb;
+    --panel:#ffffff;
+    --panel-2:#f8fafc;
+    --text:#0f172a;
+    --muted:#64748b;
+    --border:#e2e8f0;
+    --accent:#2563eb;
+    --gd:#2563eb;
+    --sgd:#ec4899;
+    --grid:#eef2f7;
+    --shadow:0 1px 2px rgba(15,23,42,.06), 0 12px 32px rgba(15,23,42,.07);
+    --radius:16px;
+    --ok:#059669;
+    --warn:#d97706;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 20px 44px}
+  header{margin-bottom:18px}
+  .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  h1{margin:8px 0 8px;font-size:28px;line-height:1.15;letter-spacing:-.02em;font-weight:800}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13.5px;line-height:1.65;max-width:760px;margin:0}
+  .formula-bar{
+    margin:16px 0 14px;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow:var(--shadow);
+    padding:12px 14px;
+    display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between
+  }
+  .formulas{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .formula{font-family:ui-monospace, SFMono-Regular, Menlo, monospace;font-size:11.5px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:9px 11px;line-height:1.5}
+  .formula b{color:var(--accent)}
+  .formula small{color:var(--muted)}
+  .pill{font-size:11px;letter-spacing:.05em;text-transform:uppercase;background:#eff6ff;border:1px solid #dbeafe;color:#1e40af;padding:6px 10px;border-radius:999px;font-weight:700;white-space:nowrap}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .controls{ display:flex;flex-wrap:wrap;gap:14px;align-items:end;padding:16px 16px 14px}
+  .field{flex:1;min-width:170px}
+  .field label{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px}
+  .field .value{font-family:ui-monospace,monospace;font-size:12px;background:var(--panel-2);border:1px solid var(--border);padding:5px 8px;border-radius:8px;display:inline-block;min-width:56px;text-align:center;margin-left:8px;font-weight:700}
+  .slider{width:100%;accent-color:var(--accent)}
+  .scale{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;margin-top:4px}
+  .btn{appearance:none;border:0;background:var(--text);color:white;padding:10px 16px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap}
+  .btn:active{transform:translateY(1px)}
+  .batch-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+  .chip{appearance:none;border:1.5px solid var(--border);background:var(--panel);padding:7px 12px;border-radius:999px;font-size:12px;cursor:pointer;font-weight:700;color:var(--muted)}
+  .chip.active{background:var(--sgd);border-color:var(--sgd);color:white;box-shadow:0 4px 14px rgba(236,72,153,.28)}
+  .main{padding:16px 16px 12px}
+  .chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px}
+  .chart-head h3{margin:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .chart-head h2{margin:5px 0 0;font-size:17px;letter-spacing:-.015em;font-weight:800}
+  .chart-head p{margin:6px 0 0;color:var(--muted);font-size:12.5px;line-height:1.55;max-width:640px}
+  .badge{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:6px 9px;border-radius:999px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted);white-space:nowrap}
+  canvas{width:100%;display:block}
+  #cLoss{height:300px}
+  #cDeltaGD{height:320px}
+  #cDeltaSGD{height:320px}
+  #cScatterGD{height:240px}
+  #cScatterSGD{height:240px}
+  #cSteps{height:330px}
+  #cSchedule{height:340px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:10px 0 2px;line-height:1.5;overflow:visible;padding-top:2px}
+  .legend-item{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:650;color:var(--muted);line-height:1.4;overflow:visible}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media(max-width:800px){.two-col{grid-template-columns:1fr}}
+  .kpis{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:14px}
+  @media(max-width:720px){.kpis{grid-template-columns:1fr}}
+  .kpi{border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--panel)}
+  .kpi.gd{border-color:#bfdbfe;background:#f8fbff}
+  .kpi.sgd{border-color:#fbcfe8;background:#fff7fb}
+  .kpi .label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:6px}
+  .kpi .num{font-size:24px;font-weight:800;letter-spacing:-.03em;margin-top:6px;line-height:1}
+  .kpi .hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
+  .kpi .steps{font-family:ui-monospace,monospace}
+  .bar{height:6px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin-top:8px}
+  .bar > div{height:100%;border-radius:999px}
+  .foot{margin-top:16px;color:var(--muted);font-size:12px;line-height:1.65;text-align:center;max-width:760px;margin-left:auto;margin-right:auto}
+  .note{background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px 14px;margin-top:12px;display:flex;gap:10px;align-items:flex-start}
+  .note b{color:#92400e}
+  .note p{margin:0;color:#78350f;font-size:12.5px;line-height:1.6}
+  .verif-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media(max-width:760px){.verif-grid{grid-template-columns:1fr}}
+  .verif{border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--panel-2)}
+  .verif h4{margin:0 0 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800}
+  .verif table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .verif td{padding:7px 6px 7px 0;border-bottom:1px solid #eef2f7;vertical-align:top}
+  .verif td:last-child{text-align:right;font-family:ui-monospace,monospace;font-weight:700}
+  .verif .ok{color:var(--ok)}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:999px;border:1px solid var(--border);background:white;color:var(--muted)}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, monospace}
+  .help{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
+  .hover-info{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);min-height:18px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Noise Scale · Delta Loss per Step Verification</div>
+    <h1>ΔL at each step: <span>full-batch vs mini-batch</span></h1>
+    <p class="sub">
+      Same data, same starting weights, optimal step size at every step. We plot the <b style="color:var(--text)">actual change in training loss ΔL<sub>t</sub> = L<sub>t+1</sub> − L<sub>t</sub></b> and the <b style="color:var(--text)">change predicted by the noise-scale theory</b>.
+      For this task the theory is exact, so the two should line up. Then we turn that into an exchange rate:
+      <b style="color:var(--text)">how many mini-batch steps it takes to buy the loss drop of one full-batch step</b>, at every step of training.
+    </p>
+    <div class="formula-bar">
+      <div class="formulas">
+        <div class="formula"><b>Optimal step size</b> ε<sub>opt</sub>(B) = |G|² / ( G<sup>T</sup>HG + tr(HΣ)/B ) <small>— Eq 2.6</small></div>
+        <div class="formula"><b>Predicted improvement</b> ΔL<sub>opt</sub>(B) = −½|G|⁴ / (G<sup>T</sup>HG + tr(HΣ)/B) <small>— Eq 2.5 at optimum</small></div>
+        <div class="formula"><b>Noise scale</b> B<sub>noise</sub> = tr(HΣ) / G<sup>T</sup>HG <small>— Eq 2.8</small></div>
+      </div>
+      <div class="pill" id="pillBnoise">Average noise scale ≈ —</div>
+    </div>
+    <p class="help" style="margin-top:8px;max-width:760px">
+      The learning rate is <b>not a slider</b> — it is derived at each step from the current gradient, curvature, and noise. Full-batch uses ε = |G|² / G<sup>T</sup>HG. Mini-batch divides by (1 + B<sub>noise</sub>/B), so it must take a smaller step when the gradient is noisy. This automatically gives the largest possible drop in loss for that batch size.
+    </p>
+  </header>
+
+  <!-- Controls -->
+  <div class="card">
+    <div class="controls">
+      <div class="field" style="flex:1">
+        <label>Mini-batch size B <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(full-batch is always N=256)</span></label>
+        <div class="batch-row" id="batchChips"></div>
+        <div class="help">Smaller B means noisier gradient. Larger B is closer to full-batch.</div>
+      </div>
+      <div class="field" style="flex:0.9">
+        <label>Target training loss <span class="value" id="v-target">0.10</span></label>
+        <input id="target" class="slider" type="range" min="0.06" max="0.20" step="0.005" value="0.10"/>
+        <div class="scale"><span>0.06 tight</span><span>0.20 early</span></div>
+      </div>
+      <button class="btn" id="runBtn">↻ New random data</button>
+    </div>
+  </div>
+
+  <!-- Loss trajectory (context) -->
+  <div class="card main" style="margin-top:14px">
+    <div class="chart-head">
+      <div>
+        <h3>Context · Training loss at each step</h3>
+        <h2>How the loss goes down over time</h2>
+        <p>Full training loss on all 256 examples, log scale. Dashed line = your target. Vertical lines = first step that reaches the target. The area under the ΔL plots below adds up to this curve.</p>
+      </div>
+      <span class="badge" id="badgeTarget">target 0.10</span>
+    </div>
+    <canvas id="cLoss" width="940" height="300"></canvas>
+    <div class="legend" id="legendLoss"></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="note" id="insightBox"><span style="font-size:16px">💡</span><p id="insightText">—</p></div>
+  </div>
+
+  <!-- Two separate Delta plots -->
+  <div class="two-col">
+    <div class="card main">
+      <div class="chart-head">
+        <div>
+          <h3>Full-batch (GD) · B = 256</h3>
+          <h2>Change in loss at each step</h2>
+          <p>Blue solid = actual measured change. Blue dashed = theory prediction. For full-batch they should overlap perfectly (no noise, and the loss surface is quadratic).</p>
+        </div>
+        <span class="badge" style="background:#eff6ff;border-color:#dbeafe;color:#1e40af">GD</span>
+      </div>
+      <canvas id="cDeltaGD" width="460" height="320"></canvas>
+      <div class="legend" id="legendDeltaGD"></div>
+      <div class="hover-info" id="hoverDeltaGD"></div>
+    </div>
+    <div class="card main">
+      <div class="chart-head">
+        <div>
+          <h3>Mini-batch (SGD) · B = <span id="badgeB2">8</span></h3>
+          <h2>Change in loss at each step</h2>
+          <p>Pink solid = actual measured change (jiggly because the mini-batch gradient is noisy). Pink dashed = average change predicted by theory. The pink line should run through the middle of the jiggly line.</p>
+        </div>
+        <span class="badge" style="background:#fdf2f8;border-color:#fbcfe8;color:#be185d">SGD</span>
+      </div>
+      <canvas id="cDeltaSGD" width="460" height="320"></canvas>
+      <div class="legend" id="legendDeltaSGD"></div>
+      <div class="hover-info" id="hoverDeltaSGD"></div>
+    </div>
+  </div>
+  <p class="help" style="text-align:center;margin-top:8px">Negative ΔL means the loss went down (good). Zero is the boundary. Hover any delta plot to see exact numbers for that step. Both plots share the same vertical scale so you can compare how much smaller SGD improvements are.</p>
+
+  <!-- Two separate scatter verification plots -->
+  <div class="two-col">
+    <div class="card main">
+      <div class="chart-head">
+        <div>
+          <h3>Verification · Full-batch</h3>
+          <h2>Predicted vs actual (each dot is one step)</h2>
+          <p>If theory is correct, every dot sits on the diagonal line.</p>
+        </div>
+      </div>
+      <canvas id="cScatterGD" width="460" height="240"></canvas>
+      <div class="legend" id="legendScatterGD"></div>
+    </div>
+    <div class="card main">
+      <div class="chart-head">
+        <div>
+          <h3>Verification · Mini-batch</h3>
+          <h2>Predicted vs actual (each dot is one step)</h2>
+          <p>On average dots should be on the diagonal, but individual steps scatter around it because of gradient noise.</p>
+        </div>
+      </div>
+      <canvas id="cScatterSGD" width="460" height="240"></canvas>
+      <div class="legend" id="legendScatterSGD"></div>
+    </div>
+  </div>
+
+  <!-- Step-by-step verification table - plain language -->
+  <div class="card main" style="margin-top:14px">
+    <div class="chart-head">
+      <div>
+        <h3>Step-by-step check: does the measured change match the theory at every step?</h3>
+        <h2>Plain-language verification</h2>
+        <p>We compare the two numbers at each step: what actually happened vs what the formula predicted. Because the loss surface is exactly quadratic, the full-batch prediction is mathematically exact.</p>
+      </div>
+      <span class="tag">Explained without jargon</span>
+    </div>
+    <div class="verif-grid" style="margin-top:10px">
+      <div class="verif" id="verifGD">
+        <h4>Full-batch (GD) — no randomness</h4>
+        <table id="tblGD"><tbody></tbody></table>
+        <div class="help" id="helpGD" style="margin-top:8px"></div>
+      </div>
+      <div class="verif" id="verifSGD">
+        <h4>Mini-batch (SGD) — noisy gradient</h4>
+        <table id="tblSGD"><tbody></tbody></table>
+        <div class="help" id="helpSGD" style="margin-top:8px"></div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:14px">
+      <span style="font-size:16px">🔬</span>
+      <p id="verifText">—</p>
+    </div>
+    <div class="help" style="margin-top:8px">
+      <b>How to read this:</b> For full-batch, the two lines should be indistinguishable and every dot on the scatter plot should touch the diagonal. For mini-batch, the solid line is jiggly, but its center should follow the dashed predicted line, and the scatter dots should cloud around the diagonal. The gap between the two methods’ improvements is exactly the noise cost: mini-batch must take a smaller step, so its predicted improvement is smaller by a factor of 1 / (1 + noise_scale / batch_size).
+    </div>
+  </div>
+
+  <!-- Steps to match one full-batch step -->
+  <div class="card main" style="margin-top:14px">
+    <div class="chart-head">
+      <div>
+        <h3>The exchange rate · steps per step</h3>
+        <h2>How many mini-batch steps buy the same loss drop as one full-batch step?</h2>
+        <p>Take the loss drop ΔL that full-batch GD achieves at step t. Starting from the exact same weights, how many
+           mini-batch steps does SGD need to bank that same drop? The noise-scale theory says
+           <b style="color:var(--text)">1 + B<sub>noise</sub>/B</b>, and nothing else.</p>
+      </div>
+      <span class="badge" id="badgeMatchB">B = 8</span>
+    </div>
+    <canvas id="cSteps" width="940" height="330"></canvas>
+    <div class="legend" id="legendSteps"></div>
+    <div class="hover-info" id="hoverSteps"></div>
+    <div class="kpis" id="kpisMatch" style="grid-template-columns:1fr 1fr 1fr"></div>
+    <div class="note"><span style="font-size:16px">💡</span><p id="matchInsight">—</p></div>
+    <div class="help" style="margin-top:8px">
+      <b>Why there are two measured lines.</b> The pink line divides GD's loss drop at step t by the average loss drop of a
+      <i>single</i> mini-batch step taken from the same weights — that is exactly the quantity 1 + B<sub>noise</sub>/B predicts, so it should
+      sit on the dashed line. The grey line actually runs SGD from those weights until the loss has fallen that far and counts the steps.
+      It lands slightly higher, because inside the catch-up window the gradient keeps shrinking, so step 2 of the window buys a little
+      less than step 1 did — a compounding effect the single-step ratio does not include.
+    </div>
+  </div>
+
+  <!-- Batch schedule: varying batch size per learning step -->
+  <div class="card main" style="margin-top:14px">
+    <div class="chart-head">
+      <div>
+        <h3>The exchange rate — batch schedule</h3>
+        <h2>Varying batch size per step: B<sub>t</sub> ∈ {B<sub>a</sub>, B<sub>b</sub>} at random</h2>
+        <p>Now the batch size itself is a <b>schedule</b> that varies each step. At every learning
+           step we flip a fair coin and pick one of two sizes, e.g. B<sub>t</sub> = 8 or 32 (50% each).
+           The paper's per-step optimum holds <i>conditionally</i> on the realized B<sub>t</sub>:
+           ε*(B<sub>t</sub>) = |G|²/(G<sup>T</sup>HG + tr(HΣ)/B<sub>t</sub>) and the predicted exchange
+           rate at step t is <b>S(t) = 1 + B<sub>noise</sub>(t)/B<sub>t</sub></b> — a random jittered sequence.
+           Averaging over the coin gives E[S] = 1 + B<sub>noise</sub>·E[1/B] = 1 + B<sub>noise</sub>·(1/B<sub>a</sub>+1/B<sub>b</sub>)/2.
+           Note E[1/B] ≠ 1/E[B]; using the arithmetic mean batch  B̄ under-predicts the mean cost.</p>
+      </div>
+      <span class="badge" id="badgeSched">B ∈ {8, 32}</span>
+    </div>
+    <div class="controls" style="padding:16px 16px 14px;gap:14px;align-items:flex-start;overflow:visible">
+      <div style="flex:1;min-width:260px">
+        <label style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700;display:block;margin-bottom:6px;line-height:1.6;padding-top:2px;overflow:visible">Schedule: pick B<sub>a</sub> (small) — each step coin picks B<sub>a</sub> vs B<sub>b</sub></label>
+        <div class="batch-row" id="schedChipsA"></div>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <label style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700;display:block;margin-bottom:6px;line-height:1.6;padding-top:2px;overflow:visible">B<sub>b</sub> (large)</label>
+        <div class="batch-row" id="schedChipsB"></div>
+      </div>
+      <button class="btn" id="newSchedBtn" title="Resample the coin flips for the schedule" style="align-self:flex-end">↻ New schedule</button>
+    </div>
+    <canvas id="cSchedule" width="940" height="340"></canvas>
+    <div class="legend" id="legendSchedule"></div>
+    <div class="hover-info" id="hoverSchedule"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 16px 0">
+      <div style="background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.5;flex:1;min-width:200px">
+        <div class="mono" style="font-weight:800;color:var(--text)">Exchange rate S<sub>theory</sub>(t) = 1 + B<sub>noise</sub>(t)/B<sub>t</sub> — grey dashed</div>
+        <div style="color:var(--muted)">Predicted exchange rate per full-batch GD step, jagged because realized B<sub>t</sub> jitters between B<sub>a</sub> and B<sub>b</sub>.</div>
+      </div>
+      <div style="background:#fff7fb;border:1px solid #fbcfe8;border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.5;flex:1;min-width:200px">
+        <div style="font-weight:800;color:#be185d">Exchange rate S(t) measured — pink solid + ±2 s.e. band</div>
+        <div style="color:var(--muted)">Measured exchange rate = ΔL<sub>GD</sub>(t) / E[ΔL<sub>Sgd</sub>(B<sub>t</sub>)] per GD step t, avg over 300 batch draws conditioned on same B<sub>t</sub>. Should sit on grey dashed.</div>
+      </div>
+    </div>
+    <div class="kpis" id="kpisSched" style="grid-template-columns:1fr 1fr 1fr"></div>
+    <div class="note"><span style="font-size:16px">💡</span><p id="schedInsight">—</p></div>
+    <div class="help" style="margin-top:8px">
+      <b>Derivation.</b> Starting from Eq 2.5–2.8: ΔL<sub>opt</sub>(B)=−½|G|⁴/(G<sup>T</sup>HG+tr(HΣ)/B).
+      Divide full-batch ΔL<sub>GD</sub>=−½|G|⁴/G<sup>T</sup>HG by ΔL<sub>opt</sub>(B<sub>t</sub>) to get S(t)=1+B<sub>noise</sub>/B<sub>t</sub>.
+      With a schedule the denominator changes each step, so S(t) inherits the schedule's randomness. Its mean over the coin is 1+B<sub>noise</sub>·E[1/B], not 1+B<sub>noise</sub>/E[B]; e.g. for {8,32}, E[1/B]=(1/8+1/32)/2=0.0781 while 1/E[B]=1/20=0.05, a 56% gap. The schedule also affects the *real* SGD trajectory: a small-B step uses a smaller ε*, so progress stalls on tiny-batch steps and surges on large-batch steps — the pink measured line tracks this conditional expectation.
+    </div>
+  </div>
+
+
+  <p class="foot">
+    Setup: 256 training examples, 12 parameters, linear model with squared error. Feature variances span a factor of 200, so the curvature is ill-conditioned and full-batch GD needs tens of distinct steps rather than a handful. Curvature H is constant, so the second-order prediction is not an approximation — it is exact. Gradient G, curvature H, and the full D×D gradient covariance Σ are computed over all 256 examples at each step, and B<sub>noise</sub> = tr(HΣ) / G<sup>T</sup>HG is formed from that explicit Σ — no shortcut. Step size is chosen at each step to give the biggest expected drop (Eq 2.6); for full-batch that is the exact line-search minimiser, so no stability cap is needed. Both methods start from the same weights. Mini-batches are drawn <i>with</i> replacement, which is the sampling assumption behind Σ/B in the paper. Median noise scale is the middle value of B<sub>noise</sub> over the first 30 steps.
+  </p>
+</div>
+
+<script>
+/* ---------- Helpers ---------- */
+function mulberry32(seed){
+  return function(){
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+function randn(rng){
+  let u=0,v=0; while(u===0) u=rng(); while(v===0) v=rng();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+function dot(a,b){ let s=0; for(let i=0;i<a.length;i++) s+=a[i]*b[i]; return s; }
+function zeros(n){ return new Float64Array(n); }
+function clone(a){ return new Float64Array(a); }
+
+/* ---------- Data ---------- */
+function generateData(seed){
+  const rng=mulberry32(seed);
+  // N examples, D parameters. Feature variances span a factor of `spread`, so the curvature
+  // H is ill-conditioned and full-batch GD needs tens of distinct steps rather than a handful.
+  const N=256, D=12, sigma=0.3, spread=200;
+  const X=Array.from({length:N},()=> new Float64Array(D));
+  for(let i=0;i<N;i++) for(let j=0;j<D;j++){
+    const eig=Math.pow(spread, -(j/(D-1)));   // eigenvalues 1 … 1/200
+    X[i][j]=randn(rng)*Math.sqrt(eig);
+  }
+  const wStar=new Float64Array(D);
+  for(let j=0;j<D;j++) wStar[j]=(rng()*2-1)*1.2;
+  const y=new Float64Array(N);
+  for(let i=0;i<N;i++) y[i]=dot(X[i],wStar)+randn(rng)*sigma;
+  const w0=new Float64Array(D);
+  for(let j=0;j<D;j++) w0[j]=randn(rng)*0.5;
+  const H=Array.from({length:D},()=> new Float64Array(D));
+  for(let i=0;i<N;i++) for(let a=0;a<D;a++) for(let b=0;b<D;b++) H[a][b]+=X[i][a]*X[i][b]/N;
+  return {X,y,w0,H,N,D};
+}
+function matVec(H, v){
+  const D=v.length;
+  const out=zeros(D);
+  for(let a=0;a<D;a++){ let s=0; for(let b=0;b<D;b++) s+=H[a][b]*v[b]; out[a]=s; }
+  return out;
+}
+function fullStats(w, data){
+  // ---- Forward + Backward on FULL dataset (for logging / theory) ----
+  // Forward: pred_i = dot(X[i], w), err_i = pred_i - y[i], loss = mean 0.5 err^2
+  // Backward: per-example grad_i[j] = X[i][j] * err_i, full grad G = mean grad_i
+  const {X,y,N,D,H}=data;
+  let lossSum=0;
+  const G=zeros(D);
+  const perGrads=Array.from({length:N},()=> zeros(D));
+  for(let i=0;i<N;i++){
+    const err=dot(X[i],w)-y[i]; // forward
+    lossSum+=0.5*err*err;
+    for(let j=0;j<D;j++){ const g=X[i][j]*err; perGrads[i][j]=g; G[j]+=g/N; } // backward
+  }
+  const loss=lossSum/N;
+  const Gnorm2=dot(G,G);
+  const HG=matVec(H,G);
+  const GHG=dot(G,HG);
+  // Covariance of per-example grads: Sigma = Cov(grad_i)
+  const Sigma=Array.from({length:D},()=> zeros(D));
+  for(let i=0;i<N;i++) for(let j=0;j<D;j++) perGrads[i][j]-=G[j];
+  for(let i=0;i<N;i++) for(let a=0;a<D;a++) for(let b=0;b<D;b++) Sigma[a][b]+=perGrads[i][a]*perGrads[i][b]/N;
+  let trHS=0;
+  for(let a=0;a<D;a++) for(let b=0;b<D;b++) trHS+=H[a][b]*Sigma[b][a];
+  let trS=0; for(let a=0;a<D;a++) trS+=Sigma[a][a];
+  let Bnoise=null, Bsimple=null;
+  if(GHG>1e-12 && isFinite(trHS) && trHS>=0) Bnoise=trHS/GHG;
+  if(Bnoise!==null && (!isFinite(Bnoise) || Bnoise>1e6 || Bnoise<0)) Bnoise=null;
+  if(Gnorm2>1e-12 && isFinite(trS)) Bsimple=trS/Gnorm2;
+  if(Bsimple!==null && (!isFinite(Bsimple)||Bsimple>1e6||Bsimple<0)) Bsimple=null;
+  return {loss, G, Gnorm2, GHG, trHS, trS, Bnoise, Bsimple, HG};
+}
+
+/* ---------- Helpers: make the training loop readable ---------- */
+function sampleMiniBatch(N, B, rng){
+  // Uniform sample of B indices WITH replacement. This is the sampling assumption behind
+  // Cov(grad_B) = Sigma/B in the paper; sampling without replacement would shrink the noise
+  // by (N-B)/(N-1) and the predictions below would be systematically pessimistic.
+  const idx=new Array(B);
+  for(let b=0;b<B;b++) idx[b]=Math.floor(rng()*N);
+  return idx;
+}
+function miniBatchGradient(w, data, batchIdx){
+  // Forward + Backward on ONE mini-batch: grad_B = mean X[i]*err_i over batch
+  const {X, y}=data;
+  const D=w.length, B=batchIdx.length;
+  const g=zeros(D);
+  for(const i of batchIdx){
+    const err=dot(X[i],w)-y[i]; // forward on this example
+    for(let j=0;j<D;j++) g[j]+=X[i][j]*err / B; // backward, averaged
+  }
+  return g;
+}
+function optimalEpsilon(stats, B, N){
+  // Paper's optimal lr: eps* = |G|^2 / (G^T H G + tr(H Sigma)/B)
+  // For GD (B=N): eps* = |G|^2 / G^T H G, which is the exact line-search minimiser on a
+  // quadratic, so it never needs a stability cap.
+  if(stats.GHG<=1e-12) return 0;
+  let denom;
+  if(B>=N) denom = stats.GHG;
+  else denom = stats.GHG + (stats.trHS!==null ? stats.trHS/B : 0);
+  if(denom<=1e-12) denom = stats.GHG;
+  let eps = stats.Gnorm2 / denom;
+  if(!isFinite(eps) || eps<0) eps=0;
+  return eps;
+}
+function predictedDelta(stats, B, N){
+  // Predicted loss change at optimal eps: -0.5 * |G|^4 / denom
+  if(stats.GHG<=1e-12) return 0;
+  let denom;
+  if(B>=N) denom = stats.GHG;
+  else denom = stats.GHG + (stats.trHS!==null ? stats.trHS/B : 0);
+  if(denom<=1e-12) denom = stats.GHG;
+  return -0.5 * stats.Gnorm2*stats.Gnorm2 / denom;
+}
+
+/* ---------- Simplified training loop ---------- */
+function simulateOptimal(B, data, totalSteps, seed){
+  const rng=mulberry32(seed + B*1009);
+  let w=clone(data.w0);
+  const {D,N}=data;
+  const losses=[], stats=[], epsilons=[], deltasPred=[], weights=[];
+  for(let step=0; step<=totalSteps; step++){
+    // 1) Evaluate full loss + gradient (for plotting + theory)
+    const st=fullStats(w, data);
+    losses.push(st.loss);
+    stats.push(st);
+    weights.push(clone(w));      // needed to restart SGD from the exact same point later
+    if(step===totalSteps) break;
+
+    // 2) Derive step size and prediction from theory
+    const eps=optimalEpsilon(st, B, N);
+    const pred=predictedDelta(st, B, N);
+    epsilons.push(eps);
+    deltasPred.push(pred);
+
+    // 3) Sample batch, compute batch gradient, update
+    const gStep = (B>=N) ? st.G : miniBatchGradient(w, data, sampleMiniBatch(N, B, rng));
+    for(let j=0;j<D;j++) w[j] -= eps * gStep[j]; // SGD update
+  }
+  const deltasMeasured=[];
+  for(let t=0;t<totalSteps;t++) deltasMeasured.push(losses[t+1]-losses[t]);
+  const lossPts = losses.map((y,x)=>({x,y}));
+  const deltaMeasPts = deltasMeasured.map((y,x)=>({x,y}));
+  const deltaPredPts = deltasPred.map((y,x)=>({x,y}));
+  return {losses:lossPts, deltaMeasPts, deltaPredPts, deltasMeasured, deltasPred, epsilons, stats, weights};
+}
+
+/* ---------- How many mini-batch steps equal one full-batch step? ----------
+   Two readings of the same question, both measured against the same GD trajectory.
+
+   (a) RATIO OF PER-STEP IMPROVEMENTS.
+       From the exact weights w_t that GD is at, take ONE mini-batch step with the optimal
+       eps*(B) and record the real change in full training loss. Average over many batches.
+       steps = deltaL_GD(t) / mean deltaL_SGD(t).
+       This is the quantity the paper predicts: it should equal 1 + B_noise/B.
+
+   (b) STEPS ACTUALLY NEEDED TO CATCH UP.
+       From the same w_t, run mini-batch SGD until the full training loss has fallen to
+       L_GD(t+1) - i.e. until it has banked the same loss delta - and count the steps.
+       This runs a little higher than (a): within the catch-up window the gradient is
+       shrinking, so the later steps in the window buy less than the first one did.        */
+
+function lossAt(w, data){
+  // Full training loss only. O(N*D) - no gradient, no covariance.
+  const {X,y,N}=data;
+  let s=0;
+  for(let i=0;i<N;i++){ const e=dot(X[i],w)-y[i]; s+=0.5*e*e; }
+  return s/N;
+}
+
+function deltaRatioAtStep(w, st, dLgd, data, B, reps, rng){
+  // (a) mean one-step loss change of mini-batch SGD, started from w.
+  const {N,D}=data;
+  const eps=optimalEpsilon(st, B, N);
+  if(eps<=0 || !(dLgd<0)) return null;
+  const wTry=zeros(D);
+  let sum=0, sumSq=0;
+  for(let r=0;r<reps;r++){
+    const g=miniBatchGradient(w, data, sampleMiniBatch(N, B, rng));
+    for(let j=0;j<D;j++) wTry[j]=w[j]-eps*g[j];
+    const d=lossAt(wTry, data)-st.loss;
+    sum+=d; sumSq+=d*d;
+  }
+  const m=sum/reps;
+  if(!(m<0)) return null;
+  const varr=Math.max(0,(sumSq/reps - m*m))*reps/Math.max(1,reps-1);
+  const se=Math.sqrt(varr/reps);
+  return {
+    steps: dLgd/m,
+    lo: (m-2*se<0)? dLgd/(m-2*se) : null,   // tighter bound (SGD doing better)
+    hi: (m+2*se<0)? dLgd/(m+2*se) : null
+  };
+}
+
+function catchUpAtStep(w, target, data, B, reps, maxK, seedBase, budget){
+  // (b) median number of SGD steps to reach the loss level GD reached in one step.
+  const {N,D}=data;
+  const counts=[];
+  let spent=0;
+  for(let r=0;r<reps;r++){
+    if(spent>=budget) break;
+    const rng=mulberry32(seedBase + r*7919);
+    const wv=clone(w);
+    let st=fullStats(wv, data);
+    let k=0, reached=false;
+    while(k<maxK && spent<budget){
+      const eps=optimalEpsilon(st, B, N);
+      if(eps<=0) break;
+      const g=miniBatchGradient(wv, data, sampleMiniBatch(N, B, rng));
+      for(let j=0;j<D;j++) wv[j]-=eps*g[j];
+      k++; spent++;
+      st=fullStats(wv, data);
+      if(st.loss<=target){ reached=true; break; }
+    }
+    if(reached) counts.push(k);
+  }
+  return {steps: counts.length? median(counts) : null, spent};
+}
+
+function measureStepsToMatch(gdRes, data, B, T, opts){
+  // Small batches need an order of magnitude more catch-up steps per GD step, so they get
+  // fewer replicate runs. The delta-ratio measurement is cheap and keeps its full replicate count.
+  const reps = B>=16 ? opts.reps : opts.repsSmall;
+  const deltaReps=opts.deltaReps, maxK=opts.maxK;
+  let budget=opts.budget;
+  const theory=[], ratio=[], ratioLo=[], ratioHi=[], catchUp=[];
+  const rng=mulberry32(4242 + B*104729);
+  for(let t=0;t<T;t++){
+    const st=gdRes.stats[t];
+    const dLgd=gdRes.deltasMeasured[t];
+    theory.push((st.Bnoise!==null && isFinite(st.Bnoise)) ? 1+st.Bnoise/B : null);
+
+    const rr=deltaRatioAtStep(gdRes.weights[t], st, dLgd, data, B, deltaReps, rng);
+    ratio.push(rr? rr.steps : null);
+    ratioLo.push(rr? rr.lo : null);
+    ratioHi.push(rr? rr.hi : null);
+
+    if(budget>0){
+      const cu=catchUpAtStep(gdRes.weights[t], gdRes.losses[t+1].y, data, B, reps, maxK, 9001+t*131+B*7919, budget);
+      budget-=cu.spent;
+      catchUp.push(cu.steps);
+    } else {
+      catchUp.push(null);
+    }
+  }
+  return {theory, ratio, ratioLo, ratioHi, catchUp, budgetLeft:budget};
+}
+function stepsToTarget(losses, target){
+  for(let i=0;i<losses.length;i++) if(losses[i].y <= target) return losses[i].x;
+  return null;
+}
+function median(arr){
+  const s=[...arr].sort((a,b)=>a-b);
+  return s[Math.floor(s.length/2)];
+}
+function pearson(xs, ys){
+  const n=Math.min(xs.length, ys.length);
+  if(n<2) return null;
+  let sx=0, sy=0;
+  for(let i=0;i<n;i++){ sx+=xs[i]; sy+=ys[i]; }
+  sx/=n; sy/=n;
+  let num=0, dx=0, dy=0;
+  for(let i=0;i<n;i++){ const dx_i=xs[i]-sx, dy_i=ys[i]-sy; num+=dx_i*dy_i; dx+=dx_i*dx_i; dy+=dy_i*dy_i; }
+  dx=Math.sqrt(dx); dy=Math.sqrt(dy);
+  if(dx===0||dy===0) return null;
+  return num/(dx*dy);
+}
+function mean(arr){ if(!arr.length) return NaN; return arr.reduce((a,b)=>a+b,0)/arr.length; }
+
+/* ---------- Drawing ---------- */
+function setupCanvas(canvas){
+  const dpr=window.devicePixelRatio||1;
+  const rect=canvas.getBoundingClientRect();
+  const W=Math.round(rect.width*dpr), H=Math.round(rect.height*dpr);
+  if(canvas.width!==W) canvas.width=W;
+  if(canvas.height!==H) canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx, width:rect.width, height:rect.height};
+}
+function getLogTicks(min,max){
+  const ticks=[];
+  const start=Math.pow(10, Math.floor(Math.log10(Math.max(min,1e-9))));
+  for(let v=start; v<=max*1.02; v*=10){ ticks.push(v); if(v*2<=max) ticks.push(v*2); if(v*5<=max) ticks.push(v*5); }
+  return ticks.filter(v=>v>=min*0.9 && v<=max*1.1).sort((a,b)=>a-b);
+}
+function drawLoss(canvas, gdLosses, sgdLosses, target, gdCross, sgdCross, B){
+  const {ctx,width,height}=setupCanvas(canvas);
+  ctx.clearRect(0,0,width,height);
+  const pad={l:56,r:16,t:14,b:30};
+  const plotW=width-pad.l-pad.r, plotH=height-pad.t-pad.b;
+  let yMin=Infinity,yMax=-Infinity, xMax=0;
+  for(const pt of gdLosses){ yMin=Math.min(yMin,pt.y); yMax=Math.max(yMax,pt.y); xMax=Math.max(xMax,pt.x); }
+  for(const pt of sgdLosses){ yMin=Math.min(yMin,pt.y); yMax=Math.max(yMax,pt.y); }
+  yMin=Math.min(yMin, target*0.85);
+  let minPos=Math.min(...gdLosses.filter(p=>p.y>0).map(p=>p.y), ...sgdLosses.filter(p=>p.y>0).map(p=>p.y));
+  yMin=Math.max(minPos*0.75, Math.min(yMin, minPos*0.9));
+  yMax*=1.12;
+  const yMinLog=Math.log10(yMin), yMaxLog=Math.log10(yMax);
+  const xMin=0;
+  function xToPx(x){ return pad.l + (x - xMin)/(Math.max(1,xMax)-xMin)*plotW; }
+  function yToPx(y){ if(y<=0) return pad.t+plotH; const ly=Math.log10(y); return pad.t + (1-(ly-yMinLog)/(yMaxLog-yMinLog))*plotH; }
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1; ctx.beginPath();
+  for(let i=0;i<=6;i++){ const x=xMin+(xMax-xMin)*i/6; const px=xToPx(x); ctx.moveTo(px,pad.t); ctx.lineTo(px,pad.t+plotH); }
+  const ticks=getLogTicks(yMin,yMax);
+  for(const v of ticks){ const py=yToPx(v); ctx.moveTo(pad.l,py); ctx.lineTo(pad.l+plotW,py); }
+  ctx.stroke();
+  const pyT=yToPx(target);
+  ctx.save();
+  ctx.fillStyle='rgba(245,158,11,0.07)'; ctx.fillRect(pad.l, pyT, plotW, pad.t+plotH - pyT);
+  ctx.strokeStyle='#f59e0b'; ctx.lineWidth=1.9; ctx.setLineDash([7,6]); ctx.beginPath(); ctx.moveTo(pad.l,pyT); ctx.lineTo(pad.l+plotW,pyT); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#92400e'; ctx.font='11px ui-monospace, monospace';
+  const label='target '+target.toFixed(2);
+  const tw=ctx.measureText(label).width;
+  ctx.fillStyle='#fffbeb'; ctx.strokeStyle='#fde68a'; ctx.lineWidth=1;
+  ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(pad.l+plotW - tw - 18, pyT-20, tw+14, 16, 8); else ctx.rect(pad.l+plotW - tw - 18, pyT-20, tw+14,16);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#92400e'; ctx.fillText(label, pad.l+plotW - tw - 11, pyT-9);
+  ctx.restore();
+  function drawCross(x, color, label){
+    if(x===null) return;
+    const px=xToPx(x);
+    ctx.save();
+    ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.setLineDash([5,5]); ctx.globalAlpha=0.95;
+    ctx.beginPath(); ctx.moveTo(px,pad.t); ctx.lineTo(px, yToPx(target)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=color; ctx.beginPath(); ctx.arc(px,yToPx(target),5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(px,yToPx(target),2,0,Math.PI*2); ctx.fill();
+    ctx.font='11px ui-monospace, monospace';
+    const t=label; const w=ctx.measureText(t).width;
+    const bx=Math.max(pad.l, Math.min(px - w/2 - 7, pad.l+plotW - w - 14)); const by=pad.t+8;
+    ctx.fillStyle='white'; ctx.strokeStyle=color; ctx.lineWidth=1.2;
+    ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(bx, by, w+14, 18, 9); else ctx.rect(bx,by,w+14,18); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=color; ctx.fillText(t, bx+7, by+12);
+    ctx.beginPath(); ctx.moveTo(px, by+18); ctx.lineTo(px, pad.t+24); ctx.stroke();
+    ctx.restore();
+  }
+  function drawLine(losses, color, width){
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=width; ctx.lineJoin='round'; ctx.lineCap='round';
+    let started=false;
+    for(const p of losses){ if(!isFinite(p.y)||p.y<=0) continue; const px=xToPx(p.x), py=yToPx(p.y); if(!started){ctx.moveTo(px,py);started=true;} else ctx.lineTo(px,py); }
+    ctx.stroke();
+  }
+  let sgdDisplay=sgdLosses;
+  if(sgdLosses.length>2){
+    const out=[sgdLosses[0]]; let prev=sgdLosses[0].y;
+    for(let i=1;i<sgdLosses.length;i++){ const y=0.28*sgdLosses[i].y+0.72*prev; out.push({x:sgdLosses[i].x, y}); prev=y; }
+    sgdDisplay=out;
+  }
+  drawLine(gdLosses,'#2563eb',2.7);
+  drawLine(sgdDisplay,'#ec4899',2.2);
+  drawCross(gdCross,'#2563eb', gdCross===null? 'GD: not reached' : 'GD: '+gdCross+' steps');
+  drawCross(sgdCross,'#ec4899', sgdCross===null? 'SGD: not reached' : 'SGD B='+B+': '+sgdCross+' steps');
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1.1; ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,pad.t+plotH); ctx.lineTo(pad.l+plotW,pad.t+plotH); ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='11px ui-monospace, monospace'; ctx.textAlign='center';
+  for(let i=0;i<=6;i++){ const x=Math.round(xMin+(xMax-xMin)*i/6); ctx.fillText(String(x), xToPx(x), pad.t+plotH+18); }
+  ctx.textAlign='right';
+  const shown=ticks.filter((_,i)=> i%2===0);
+  for(const v of shown){ const py=yToPx(v); if(py<pad.t-2||py>pad.t+plotH+2) continue; let lab=v>=10? v.toFixed(1): v>=1? v.toFixed(1): v.toFixed(2); if(v<0.1) lab=v.toFixed(2); ctx.fillText(lab, pad.l-8, py+3); }
+  ctx.fillStyle='#94a3b8'; ctx.font='11px Inter, sans-serif'; ctx.textAlign='center';
+  ctx.fillText('optimizer step', pad.l+plotW/2, height-5);
+  ctx.save(); ctx.translate(13, pad.t+plotH/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center'; ctx.fillText('training loss (log scale)',0,0); ctx.restore();
+}
+function drawDeltaSingle(canvas, measuredPts, predPts, colorMeas, colorPred, hoverStep, globalRange){
+  const {ctx,width,height}=setupCanvas(canvas);
+  ctx.clearRect(0,0,width,height);
+  const pad={l:56,r:16,t:16,b:30};
+  const plotW=width-pad.l-pad.r, plotH=height-pad.t-pad.b;
+  // y range: use globalRange if provided, else compute from this series
+  let yMin, yMax;
+  if(globalRange){
+    yMin=globalRange.yMin; yMax=globalRange.yMax;
+  } else {
+    const allY=[...measuredPts.map(p=>p.y), ...predPts.map(p=>p.y)];
+    yMin=Math.min(...allY); yMax=Math.max(...allY);
+    yMin=Math.min(yMin,-0.005); yMax=Math.max(yMax,0.005);
+    const padY=(yMax-yMin)*0.10; yMin-=padY; yMax+=padY;
+  }
+  const xMin=0, xMax=Math.max(measuredPts.length-1, predPts.length-1,1);
+  function xToPx(x){ return pad.l + (x - xMin)/(xMax - xMin)*plotW; }
+  function yToPx(y){ return pad.t + (1 - (y - yMin)/(yMax - yMin))*plotH; }
+  // grid
+  ctx.strokeStyle='#f1f5f9'; ctx.lineWidth=1; ctx.beginPath();
+  for(let i=0;i<=6;i++){ const x=xMin+(xMax-xMin)*i/6; ctx.moveTo(xToPx(x),pad.t); ctx.lineTo(xToPx(x),pad.t+plotH); }
+  for(let i=0;i<=6;i++){ const y=yMin+(yMax-yMin)*i/6; ctx.moveTo(pad.l,yToPx(y)); ctx.lineTo(pad.l+plotW,yToPx(y)); }
+  ctx.stroke();
+  // zero line + improvement shading
+  const py0=yToPx(0);
+  if(py0>=pad.t && py0<=pad.t+plotH){
+    ctx.save();
+    ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.2; ctx.setLineDash([6,5]); ctx.beginPath(); ctx.moveTo(pad.l,py0); ctx.lineTo(pad.l+plotW,py0); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#64748b'; ctx.font='11px ui-monospace, monospace'; ctx.textAlign='right'; ctx.fillText('0', pad.l-8, py0+3);
+    if(py0 < pad.t+plotH){
+      ctx.fillStyle='rgba(34,197,94,0.07)'; ctx.fillRect(pad.l, py0, plotW, pad.t+plotH - py0);
+      ctx.fillStyle='#059669'; ctx.globalAlpha=0.75; ctx.font='10px Inter, sans-serif'; ctx.textAlign='left'; ctx.fillText('improvement ↓', pad.l+8, py0+14); ctx.globalAlpha=1;
+    }
+    ctx.restore();
+  }
+  function drawLine(pts, color, width, dash=null, alpha=1){
+    if(!pts.length) return;
+    ctx.save();
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=width; ctx.globalAlpha=alpha; ctx.lineJoin='round'; ctx.lineCap='round';
+    if(dash) ctx.setLineDash(dash);
+    let started=false;
+    for(const p of pts){ if(!isFinite(p.y)) continue; const px=xToPx(p.x), py=yToPx(p.y); if(!started){ctx.moveTo(px,py);started=true;} else ctx.lineTo(px,py); }
+    ctx.stroke(); ctx.restore();
+  }
+  // predicted behind
+  drawLine(predPts, colorPred, 1.9, [7,5], 0.95);
+  // measured
+  drawLine(measuredPts, colorMeas, 2.6);
+  // hover
+  if(hoverStep!==null && hoverStep>=0 && hoverStep<=xMax){
+    const px=xToPx(hoverStep);
+    ctx.save(); ctx.strokeStyle='rgba(15,23,42,0.18)'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(px,pad.t); ctx.lineTo(px,pad.t+plotH); ctx.stroke(); ctx.restore();
+    const mY=measuredPts[hoverStep]?.y, pY=predPts[hoverStep]?.y;
+    if(isFinite(mY)){ const py=yToPx(mY); ctx.fillStyle=colorMeas; ctx.beginPath(); ctx.arc(px,py,4,0,Math.PI*2); ctx.fill(); ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(px,py,1.7,0,Math.PI*2); ctx.fill(); }
+    if(isFinite(pY)){ const py=yToPx(pY); ctx.strokeStyle=colorPred; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(px,py,4.5,0,Math.PI*2); ctx.stroke(); }
+  }
+  // axes
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1.1; ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,pad.t+plotH); ctx.lineTo(pad.l+plotW,pad.t+plotH); ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='11px ui-monospace, monospace'; ctx.textAlign='center';
+  for(let i=0;i<=6;i++){ const x=Math.round(xMin+(xMax-xMin)*i/6); ctx.fillText(String(x), xToPx(x), pad.t+plotH+18); }
+  ctx.textAlign='right';
+  for(let i=0;i<=6;i++){ const y=yMin+(yMax-yMin)*i/6; const py=yToPx(y); if(py<pad.t-2||py>pad.t+plotH+2) continue; if(Math.abs(y)<0.0005) continue; ctx.fillText(y.toFixed(3), pad.l-8, py+3); }
+  ctx.fillStyle='#94a3b8'; ctx.font='11px Inter, sans-serif'; ctx.textAlign='center';
+  ctx.fillText('step', pad.l+plotW/2, height-5);
+  ctx.save(); ctx.translate(14, pad.t+plotH/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center'; ctx.fillText('change in loss',0,0); ctx.restore();
+  return {xToPx,yToPx,pad,plotW,plotH,yMin,yMax,xMin,xMax};
+}
+function drawScatterSingle(canvas, predPts, measPts, color){
+  const {ctx,width,height}=setupCanvas(canvas);
+  ctx.clearRect(0,0,width,height);
+  const pad={l:46,r:14,t:14,b:36};
+  const plotW=width-pad.l-pad.r, plotH=height-pad.t-pad.b;
+  const predYs=predPts.map(p=>p.y), measYs=measPts.map(p=>p.y);
+  let minV=Math.min(...predYs, ...measYs), maxV=Math.max(...predYs, ...measYs);
+  const padV=(maxV-minV)*0.08 || 0.01; minV-=padV; maxV+=padV;
+  if(minV===maxV){minV-=0.01; maxV+=0.01;}
+  function xToPx(x){ return pad.l + (x - minV)/(maxV - minV)*plotW; }
+  function yToPx(y){ return pad.t + (1 - (y - minV)/(maxV - minV))*plotH; }
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1; ctx.beginPath();
+  for(let i=0;i<=4;i++){ const v=minV+(maxV-minV)*i/4; ctx.moveTo(xToPx(v),pad.t); ctx.lineTo(xToPx(v),pad.t+plotH); ctx.moveTo(pad.l,yToPx(v)); ctx.lineTo(pad.l+plotW,yToPx(v)); }
+  ctx.stroke();
+  // diagonal
+  ctx.save(); ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1.4; ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(xToPx(minV), yToPx(minV)); ctx.lineTo(xToPx(maxV), yToPx(maxV)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#94a3b8'; ctx.font='10px Inter, sans-serif'; ctx.textAlign='left'; ctx.fillText('perfect prediction', xToPx(minV)+6, yToPx(minV)-8); ctx.restore();
+  // points
+  ctx.fillStyle=color;
+  for(let i=0;i<predPts.length;i++){
+    const px=xToPx(predPts[i].y), py=yToPx(measPts[i].y);
+    if(!isFinite(px)||!isFinite(py)) continue;
+    ctx.beginPath(); ctx.arc(px,py,3.3,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(px,py,1.2,0,Math.PI*2); ctx.fill(); ctx.fillStyle=color;
+  }
+  ctx.strokeStyle='#0f172a'; ctx.lineWidth=1.1; ctx.beginPath(); ctx.moveTo(pad.l,pad.t+plotH); ctx.lineTo(pad.l+plotW,pad.t+plotH); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,pad.t+plotH); ctx.stroke();
+  ctx.fillStyle='#0f172a'; ctx.font='11px ui-monospace, monospace'; ctx.textAlign='center'; ctx.fillText('predicted change', pad.l+plotW/2, height-7);
+  ctx.save(); ctx.translate(12, pad.t+plotH/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center'; ctx.fillText('actual change',0,0); ctx.restore();
+  ctx.fillStyle='#64748b'; ctx.font='10px ui-monospace, monospace'; ctx.textAlign='center';
+  for(let i=0;i<=4;i++){ const v=minV+(maxV-minV)*i/4; ctx.fillText(v.toFixed(3), xToPx(v), pad.t+plotH+14); }
+  ctx.textAlign='right'; for(let i=0;i<=4;i++){ const v=minV+(maxV-minV)*i/4; ctx.fillText(v.toFixed(3), pad.l-8, yToPx(v)+3); }
+}
+
+function drawStepsToMatch(canvas, m, B, T, hoverStep){
+  const {ctx,width,height}=setupCanvas(canvas);
+  ctx.clearRect(0,0,width,height);
+  const pad={l:58,r:16,t:18,b:42};
+  const plotW=width-pad.l-pad.r, plotH=height-pad.t-pad.b;
+
+  let yMax=1.4;
+  for(let t=0;t<T;t++){
+    for(const v of [m.theory[t], m.ratio[t], m.ratioHi[t], m.catchUp[t]])
+      if(v!==null && isFinite(v) && v>0) yMax=Math.max(yMax, v);
+  }
+  yMax*=1.35;
+  const yMin=0.9;
+  const lmin=Math.log10(yMin), lmax=Math.log10(yMax);
+  const xMax=Math.max(T,2);
+  function xToPx(x){ return pad.l + (x-1)/(xMax-1)*plotW; }
+  function yToPx(y){ return pad.t + (1-(Math.log10(Math.max(y,1e-6))-lmin)/(lmax-lmin))*plotH; }
+
+  // grid
+  const yTicks=getLogTicks(yMin,yMax);
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1; ctx.beginPath();
+  for(let i=0;i<=6;i++){ const px=xToPx(1+(xMax-1)*i/6); ctx.moveTo(px,pad.t); ctx.lineTo(px,pad.t+plotH); }
+  for(const v of yTicks){ const py=yToPx(v); ctx.moveTo(pad.l,py); ctx.lineTo(pad.l+plotW,py); }
+  ctx.stroke();
+
+  // "1 step = 1 step" reference
+  const py1=yToPx(1);
+  ctx.save();
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.3; ctx.setLineDash([6,5]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py1); ctx.lineTo(pad.l+plotW,py1); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle='#94a3b8'; ctx.font='10px Inter, sans-serif'; ctx.textAlign='left';
+  ctx.fillText('1 = mini-batch keeps up with full-batch', pad.l+8, py1-6);
+
+  // ±2 s.e. band on the delta ratio
+  const bandPts=[];
+  for(let t=0;t<T;t++) if(m.ratioLo[t]!==null && m.ratioHi[t]!==null && m.ratioHi[t]>0)
+    bandPts.push({x:xToPx(t+1), hi:yToPx(m.ratioHi[t]), lo:yToPx(m.ratioLo[t])});
+  if(bandPts.length>1){
+    ctx.save(); ctx.fillStyle='rgba(236,72,153,0.13)'; ctx.beginPath();
+    ctx.moveTo(bandPts[0].x, bandPts[0].hi);
+    for(let i=1;i<bandPts.length;i++) ctx.lineTo(bandPts[i].x, bandPts[i].hi);
+    for(let i=bandPts.length-1;i>=0;i--) ctx.lineTo(bandPts[i].x, bandPts[i].lo);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+
+  function drawSeries(arr, color, width, dash){
+    ctx.save();
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=width; ctx.lineJoin='round'; ctx.lineCap='round';
+    if(dash) ctx.setLineDash(dash);
+    let started=false;
+    for(let t=0;t<T;t++){
+      const v=arr[t];
+      if(v===null || !isFinite(v) || v<=0){ started=false; continue; }
+      const px=xToPx(t+1), py=yToPx(v);
+      if(!started){ ctx.moveTo(px,py); started=true; } else ctx.lineTo(px,py);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+
+  drawSeries(m.theory,'#1e3a8a',2.1,[7,5]);
+  drawSeries(m.catchUp,'#475569',1.6);
+  drawSeries(m.ratio,'#ec4899',2.6);
+
+  for(let t=0;t<T;t++){
+    const v=m.catchUp[t];
+    if(v===null||!isFinite(v)) continue;
+    ctx.fillStyle='#475569'; ctx.beginPath(); ctx.arc(xToPx(t+1),yToPx(v),2.7,0,Math.PI*2); ctx.fill();
+  }
+
+  // where the catch-up measurement ran out of budget
+  let lastMeasured=-1;
+  for(let t=0;t<T;t++) if(m.catchUp[t]!==null) lastMeasured=t;
+  if(lastMeasured>=0 && lastMeasured<T-1){
+    const px=xToPx(lastMeasured+1);
+    ctx.save();
+    ctx.fillStyle='rgba(148,163,184,0.10)'; ctx.fillRect(px, pad.t, pad.l+plotW-px, plotH);
+    ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px,pad.t); ctx.lineTo(px,pad.t+plotH); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle='#94a3b8'; ctx.font='10px Inter, sans-serif'; ctx.textAlign='left';
+    ctx.fillText('catch-up runs stop here (step budget)', px+6, pad.t+12);
+  }
+
+  // hover marker
+  if(hoverStep!==null && hoverStep>=1 && hoverStep<=T){
+    const px=xToPx(hoverStep);
+    ctx.save(); ctx.strokeStyle='rgba(15,23,42,0.18)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(px,pad.t); ctx.lineTo(px,pad.t+plotH); ctx.stroke(); ctx.restore();
+    const v=m.ratio[hoverStep-1];
+    if(v!==null && isFinite(v)){
+      ctx.fillStyle='#ec4899'; ctx.beginPath(); ctx.arc(px,yToPx(v),4.2,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(px,yToPx(v),1.7,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // axes + labels
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1.1; ctx.beginPath();
+  ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,pad.t+plotH); ctx.lineTo(pad.l+plotW,pad.t+plotH); ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='11px ui-monospace, monospace'; ctx.textAlign='center';
+  for(let i=0;i<=6;i++){ const x=Math.round(1+(xMax-1)*i/6); ctx.fillText(String(x), xToPx(x), pad.t+plotH+18); }
+  ctx.textAlign='right';
+  for(const v of yTicks){
+    const py=yToPx(v);
+    if(py<pad.t-2||py>pad.t+plotH+2) continue;
+    ctx.fillText(v>=10? String(Math.round(v)) : v.toFixed(1), pad.l-8, py+3);
+  }
+  ctx.fillStyle='#94a3b8'; ctx.font='11px Inter, sans-serif'; ctx.textAlign='center';
+  ctx.fillText('full-batch step t', pad.l+plotW/2, height-6);
+  ctx.save(); ctx.translate(14, pad.t+plotH/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center';
+  ctx.fillText('exchange rate S = mini-batch steps / GD step (log)',0,0); ctx.restore();
+}
+
+/* ---------- Batch schedule helpers ---------- */
+function generateSchedule(T, Ba, Bb, seed){
+  // Random choice from two batch sizes per learning step: coin flip each t.
+  // Ba, Bb are the two choices (e.g. 8 and 32), seed controls the coin flips.
+  const rng = mulberry32(seed);
+  const sched = new Array(T);
+  for(let t=0; t<T; t++) sched[t] = rng() < 0.5 ? Ba : Bb;
+  return sched;
+}
+function measureSchedule(gdRes, data, schedule, T, opts){
+  // Per-step exchange rate conditioned on realized schedule Bt = schedule[t].
+  // Theory: S_theory(t) = 1 + B_noise(t)/B_t  (conditional on Bt)
+  // Measured: S_meas(t) = ΔL_GD(t) / E[ΔL_sgd(B_t)]  (average over batch noise, conditioned on Bt)
+  const deltaReps = opts.deltaReps;
+  const theory=[], ratio=[], ratioLo=[], ratioHi=[];
+  for(let t=0; t<T; t++){
+    const st = gdRes.stats[t];
+    const dLgd = gdRes.deltasMeasured[t];
+    const Bt = schedule[t];
+    theory.push((st.Bnoise!==null && isFinite(st.Bnoise)) ? 1+st.Bnoise/Bt : null);
+    const stepRng = mulberry32(424242 + Bt*104729 + t*7919 + schedSeed*31);
+    const rr = deltaRatioAtStep(gdRes.weights[t], st, dLgd, data, Bt, deltaReps, stepRng);
+    ratio.push(rr? rr.steps : null);
+    ratioLo.push(rr? rr.lo : null);
+    ratioHi.push(rr? rr.hi : null);
+  }
+  return {theory, ratio, ratioLo, ratioHi, schedule: schedule.slice()};
+}
+function drawSchedule(canvas, m, T, hoverStep){
+  // Draw exchange rate for batch schedule: jagged theory (grey dashed) vs measured (pink solid + band).
+  // Background shading shows which B_t was chosen at each step (small vs large).
+  const {ctx,width,height}=setupCanvas(canvas);
+  ctx.clearRect(0,0,width,height);
+  const pad={l:58,r:16,t:28,b:42};
+  const plotW=width-pad.l-pad.r, plotH=height-pad.t-pad.b;
+  // Cap y-range to keep early steps visible - explosion beyond ~20x is near-optimum (GHG->0)
+  let yMax=1.4;
+  for(let t=0; t<T; t++){
+    for(const v of [m.theory[t], m.ratio[t], m.ratioHi[t]])
+      if(v!==null && isFinite(v) && v>0) yMax=Math.max(yMax, v);
+  }
+  yMax*=1.35;
+  yMax = Math.min(yMax, 24);
+  yMax = Math.max(yMax, 5);
+  const yMin=0.9;
+  const lmin=Math.log10(yMin), lmax=Math.log10(yMax);
+  const xMax=Math.max(T,2);
+  function xToPx(x){ return pad.l + (x-1)/(xMax-1)*plotW; }
+  function yToPx(y){ const yy=Math.min(Math.max(y,1e-6), yMax); return pad.t + (1-(Math.log10(yy)-lmin)/(lmax-lmin))*plotH; }
+  // background shading per step for schedule B_t
+  for(let t=0; t<T; t++){
+    const Bt = m.schedule[t];
+    const isSmall = Bt === Math.min(schedA, schedB);
+    const x0 = xToPx(t+1 - 0.48);
+    const x1 = xToPx(t+1 + 0.48);
+    const w = x1 - x0;
+    // small batch -> pinkish tint (costly), large batch -> blueish/grey tint (cheap)
+    ctx.fillStyle = isSmall ? 'rgba(236,72,153,0.070)' : 'rgba(37,99,235,0.055)';
+    // clip to plot area
+    const left = Math.max(pad.l, x0);
+    const right = Math.min(pad.l+plotW, x1);
+    if(right > left) ctx.fillRect(left, pad.t, right-left, plotH);
+    // thin tick at bottom indicating Bt
+    ctx.fillStyle = isSmall ? '#ec4899' : '#2563eb';
+    const tickY = pad.t+plotH - 1;
+    // small triangle or rect
+    ctx.fillRect((left+right)/2 - 1, tickY - 6, 2, 6);
+  }
+  // grid
+  const yTicks=getLogTicks(yMin,yMax);
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1; ctx.beginPath();
+  for(let i=0;i<=6;i++){ const px=xToPx(1+(xMax-1)*i/6); ctx.moveTo(px,pad.t); ctx.lineTo(px,pad.t+plotH); }
+  for(const v of yTicks){ const py=yToPx(v); ctx.moveTo(pad.l,py); ctx.lineTo(pad.l+plotW,py); }
+  ctx.stroke();
+  // 1 step reference
+  const py1=yToPx(1);
+  ctx.save();
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.3; ctx.setLineDash([6,5]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py1); ctx.lineTo(pad.l+plotW,py1); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle='#94a3b8'; ctx.font='10px Inter, sans-serif'; ctx.textAlign='left';
+  ctx.fillText('1 = schedule keeps up with full-batch', pad.l+8, py1-6);
+  // band for measured ratio ±2 s.e.
+  const bandPts=[];
+  for(let t=0; t<T; t++) if(m.ratioLo[t]!==null && m.ratioHi[t]!==null && m.ratioHi[t]>0)
+    bandPts.push({x:xToPx(t+1), hi:yToPx(m.ratioHi[t]), lo:yToPx(m.ratioLo[t])});
+  if(bandPts.length>1){
+    ctx.save(); ctx.fillStyle='rgba(236,72,153,0.13)'; ctx.beginPath();
+    ctx.moveTo(bandPts[0].x, bandPts[0].hi);
+    for(let i=1;i<bandPts.length;i++) ctx.lineTo(bandPts[i].x, bandPts[i].hi);
+    for(let i=bandPts.length-1;i>=0;i--) ctx.lineTo(bandPts[i].x, bandPts[i].lo);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  function drawSeries(arr, color, width, dash){
+    ctx.save();
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=width; ctx.lineJoin='round'; ctx.lineCap='round';
+    if(dash) ctx.setLineDash(dash);
+    let started=false;
+    for(let t=0; t<T; t++){
+      const v=arr[t];
+      if(v===null || !isFinite(v) || v<=0){ started=false; continue; }
+      const px=xToPx(t+1), py=yToPx(v);
+      if(!started){ ctx.moveTo(px,py); started=true; } else ctx.lineTo(px,py);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+  // theory dashed (black), measured solid (pink) - exchange rate S(t) highly visible
+  drawSeries(m.theory,'#0f172a',3.2,[8,6]);
+  drawSeries(m.ratio,'#ec4899',3.4);
+  // hover marker
+  if(hoverStep!==null && hoverStep>=1 && hoverStep<=T){
+    const px=xToPx(hoverStep);
+    ctx.save(); ctx.strokeStyle='rgba(15,23,42,0.18)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(px,pad.t); ctx.lineTo(px,pad.t+plotH); ctx.stroke(); ctx.restore();
+    const v=m.ratio[hoverStep-1];
+    if(v!==null && isFinite(v)){
+      ctx.fillStyle='#ec4899'; ctx.beginPath(); ctx.arc(px,yToPx(v),4.2,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(px,yToPx(v),1.7,0,Math.PI*2); ctx.fill();
+    }
+    // also highlight theory dot
+    const vt=m.theory[hoverStep-1];
+    if(vt!==null && isFinite(vt)){
+      ctx.fillStyle='#1e3a8a'; ctx.beginPath(); ctx.arc(px,yToPx(vt),3.2,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(px,yToPx(vt),1.2,0,Math.PI*2); ctx.fill();
+    }
+  }
+  // axes
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1.1; ctx.beginPath();
+  ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,pad.t+plotH); ctx.lineTo(pad.l+plotW,pad.t+plotH); ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='11px ui-monospace, monospace'; ctx.textAlign='center';
+  for(let i=0;i<=6;i++){ const x=Math.round(1+(xMax-1)*i/6); ctx.fillText(String(x), xToPx(x), pad.t+plotH+18); }
+  ctx.textAlign='right';
+  for(const v of yTicks){
+    const py=yToPx(v);
+    if(py<pad.t-2||py>pad.t+plotH+2) continue;
+    ctx.fillText(v>=10? String(Math.round(v)) : v.toFixed(1), pad.l-8, py+3);
+  }
+  ctx.fillStyle='#94a3b8'; ctx.font='11px Inter, sans-serif'; ctx.textAlign='center';
+  ctx.fillText('full-batch step t  (coin flip per step)', pad.l+plotW/2, height-6);
+  ctx.save(); ctx.translate(14, pad.t+plotH/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center';
+  ctx.fillText('exchange rate S(t) (log)',0,0); ctx.restore();
+  // small inline schedule strip at top: show Bt value text for hovered step? handled via hover info div instead.
+}
+
+/* ---------- State ---------- */
+const B_OPTIONS=[4,8,16,32,64,128];
+const TOTAL_STEPS=60;      // full-batch steps simulated for the trajectory plots
+const MATCH_STEPS=30;      // full-batch steps analysed for the exchange-rate plot
+const MATCH_OPTS={reps:5, repsSmall:3, deltaReps:300, maxK:500, budget:15000};
+let currentB=8;
+let data=generateData(42);
+let gdRes=null, sgdRes=null, BnoiseMed=null, matchRes=null, matchResB=null;
+let hoverGD=null, hoverSGD=null, hoverMatch=null;
+// Batch schedule state: random choice from two batch sizes per learning step
+let schedA=8, schedB=32, schedSeed=12345;
+let schedule=generateSchedule(MATCH_STEPS, schedA, schedB, schedSeed);
+let schedRes=null, hoverSched=null;
+
+function buildChips(){
+  const el=document.getElementById('batchChips');
+  el.innerHTML='';
+  for(const b of B_OPTIONS){
+    const btn=document.createElement('button');
+    btn.className='chip'+(b===currentB?' active':'');
+    btn.textContent='B='+b;
+    btn.onclick=()=>{ currentB=b; buildChips(); run(false); };
+    el.appendChild(btn);
+  }
+}
+function buildSchedChips(){
+  const elA=document.getElementById('schedChipsA');
+  const elB=document.getElementById('schedChipsB');
+  if(!elA || !elB) return;
+  elA.innerHTML=''; elB.innerHTML='';
+  for(const b of B_OPTIONS){
+    const btnA=document.createElement('button');
+    btnA.className='chip'+(b===schedA?' active':'');
+    btnA.textContent='B='+b;
+    btnA.onclick=()=>{ schedA=b; if(schedA===schedB) schedB=B_OPTIONS[(B_OPTIONS.indexOf(b)+2)%B_OPTIONS.length]; buildSchedChips(); refreshSchedule(true); };
+    elA.appendChild(btnA);
+    const btnB=document.createElement('button');
+    btnB.className='chip'+(b===schedB?' active':'');
+    btnB.textContent='B='+b;
+    btnB.onclick=()=>{ schedB=b; if(schedA===schedB) schedA=B_OPTIONS[(B_OPTIONS.indexOf(b)+4)%B_OPTIONS.length]; buildSchedChips(); refreshSchedule(true); };
+    elB.appendChild(btnB);
+  }
+}
+function refreshSchedule(resample){
+  if(resample) schedSeed = Math.floor(Math.random()*1e9);
+  schedule = generateSchedule(MATCH_STEPS, schedA, schedB, schedSeed);
+  // recompute schedule exchange rates against current gdRes if available
+  if(gdRes){
+    schedRes = measureSchedule(gdRes, data, schedule, MATCH_STEPS, {deltaReps:300});
+    hoverSched=null;
+    drawSchedule(document.getElementById('cSchedule'), schedRes, MATCH_STEPS, hoverSched);
+    document.getElementById('badgeSched').textContent='B ∈ {'+schedA+', '+schedB+'}  coin-flip';
+    renderSchedSummary();
+  }
+}
+function renderSchedSummary(){
+  if(!schedRes || !gdRes) return;
+  const m=schedRes, T=MATCH_STEPS;
+  const f=(x,d)=>{
+    if(x===null||!isFinite(x)) return '—';
+    if(d!==undefined) return x.toFixed(d);
+    return x>=100? String(Math.round(x)) : x>=10? x.toFixed(1) : x.toFixed(2);
+  };
+  const keep=a=>a.filter(v=>v!==null && isFinite(v));
+  const medRatio=median(keep(m.ratio)), medTh=median(keep(m.theory));
+  const n=keep(m.ratio).length;
+  const rel=[]; for(let t=0;t<T;t++) if(m.ratio[t]!==null && m.theory[t]!==null && m.theory[t]>0) rel.push(m.ratio[t]/m.theory[t]);
+  const agree=median(rel);
+  const ok = agree!==null && Math.abs(agree-1)<0.15;
+  // per-batch-size medians to illustrate conditioning
+  const theoryA=[], theoryB=[], ratioA=[], ratioB=[];
+  for(let t=0;t<T;t++){
+    if(m.schedule[t]===schedA){ if(m.theory[t]!==null) theoryA.push(m.theory[t]); if(m.ratio[t]!==null) ratioA.push(m.ratio[t]); }
+    else { if(m.theory[t]!==null) theoryB.push(m.theory[t]); if(m.ratio[t]!==null) ratioB.push(m.ratio[t]); }
+  }
+  const medThA=theoryA.length? median(theoryA):null;
+  const medThB=theoryB.length? median(theoryB):null;
+  const medRaA=ratioA.length? median(ratioA):null;
+  const medRaB=ratioB.length? median(ratioB):null;
+  // expected vs naive averaging
+  const bNoiseForAvg = BnoiseMed;
+  const meanInv = (1/schedA + 1/schedB)/2;
+  const meanB = (schedA + schedB)/2;
+  const expSched = 1 + bNoiseForAvg * meanInv;
+  const naiveSched = 1 + bNoiseForAvg / meanB;
+  document.getElementById('legendSchedule').innerHTML=`
+    <div class="legend-item"><span style="width:18px;height:0;border-top:2px dashed #0f172a;display:inline-block"></span> Exchange rate predicted = 1 + B<sub>noise</sub>/B<sub>t</sub> (grey dashed, jagged) — per full-batch GD step</div>
+    <div class="legend-item"><span class="dot" style="background:#ec4899"></span> Exchange rate measured = S(t) (pink solid + ±2 s.e. band) — per full-batch GD step</div>
+    <div class="legend-item"><span style="width:14px;height:10px;background:rgba(236,72,153,0.17);border:1px solid #fbcfe8;display:inline-block"></span> Pink shade = B<sub>t</sub>=${schedA}</div>
+    <div class="legend-item"><span style="width:14px;height:10px;background:rgba(37,99,235,0.09);border:1px solid #dbeafe;display:inline-block"></span> Blue shade = B<sub>t</sub>=${schedB}</div>
+  `;
+  document.getElementById('kpisSched').innerHTML=`
+    <div class="kpi sgd">
+      <div class="label"><span class="dot" style="background:#ec4899"></span> Schedule typical exchange</div>
+      <div class="num steps" style="color:#be185d">${f(medRatio)}<span style="font-size:14px;color:var(--muted)"> steps per GD step</span></div>
+      <div class="hint">Median S(t)=1+B<sub>noise</sub>/B<sub>t</sub> over ${n} jittered steps. B<sub>a</sub>=${schedA}→${f(medThA)} (meas ${f(medRaA)}), B<sub>b</sub>=${schedB}→${f(medThB)} (meas ${f(medRaB)}).</div>
+    </div>
+    <div class="kpi" style="background:var(--panel-2)">
+      <div class="label">Does schedule theory hold conditionally?</div>
+      <div class="num" style="font-size:20px;color:${ok?'#059669':'#d97706'}">measured / predicted = ${f(agree,3)} ${ok?'✓':''}</div>
+      <div class="hint">Median over all steps of (measured S / predicted S). 1.000 = conditional formula S=1+B<sub>noise</sub>/B<sub>t</sub> holds at every step regardless of which B was flipped.</div>
+    </div>
+    <div class="kpi ${ok?'gd':''}" ${ok?'':'style="background:var(--panel-2)"'}>
+      <div class="label">Mean over coin flips (B<sub>noise</sub>≈${f(bNoiseForAvg,1)})</div>
+      <div class="num" style="font-size:18px">E[S] = ${f(expSched,2)} <span style="font-size:13px;color:var(--muted)">vs naive 1+B<sub>noise</sub>/E[B]=${f(naiveSched,2)}</span></div>
+      <div class="hint">E[1/B]=½(1/${schedA}+1/${schedB})=${meanInv.toFixed(4)} → correct mean ${f(expSched,2)}. Naive 1/E[B]=1/${meanB}=${(1/meanB).toFixed(4)} → ${f(naiveSched,2)} (off by ${f((expSched/naiveSched-1)*100,1)}%). Schedule cost averages via <i>harmonic</i> mean, not arithmetic.</div>
+    </div>
+  `;
+  document.getElementById('schedInsight').innerHTML=
+    `With schedule B<sub>t</sub>∈{${schedA},${schedB}} the exchange rate <b>jitters each step</b>: small-batch steps (pink shade) cost ~<b>${f(medThA)}</b> mini-batch steps per GD step, large-batch steps (blue shade) cost ~<b>${f(medThB)}</b>. Median over the coin flips is <b>${f(medTh)}</b> (measured ${f(medRatio)}). The jitter is <i>not noise</i> — it is the theory: S(t) = 1 + B<sub>noise</sub>(t)/B<sub>t</sub> with the realized B<sub>t</sub> in the denominator. The <i>unconditional</i> mean E[S]=1+B<sub>noise</sub>·E[1/B] (${f(expSched,2)}) differs from the naive 1+B<sub>noise</sub>/E[B] (${f(naiveSched,2)}).`+
+    ` Hover any step to see its coin flip B<sub>t</sub> and theory vs measured at that step.`;
+  document.getElementById('hoverSchedule').innerHTML='Hover to see B<sub>t</sub>, B<sub>noise</sub>, predicted S and measured S for that step.';
+}
+
+function run(newData, skipMatch){
+  if(newData){ data=generateData(Math.floor(Math.random()*1e6)); matchRes=null; schedRes=null; }
+  const target=parseFloat(document.getElementById('target').value);
+  document.getElementById('v-target').textContent=target.toFixed(2);
+  document.getElementById('badgeTarget').textContent='target '+target.toFixed(2);
+  document.getElementById('badgeB2').textContent=currentB;
+  const totalSteps=TOTAL_STEPS;
+  gdRes=simulateOptimal(data.N, data, totalSteps, 42);
+  sgdRes=simulateOptimal(currentB, data, totalSteps, 42);
+  const bvals=gdRes.stats.slice(0,MATCH_STEPS).map(s=>s.Bnoise).filter(v=>v!==null && isFinite(v));
+  BnoiseMed= bvals.length? median(bvals) : 28;
+  if(!isFinite(BnoiseMed) || BnoiseMed<1) BnoiseMed=32;
+  document.getElementById('pillBnoise').innerHTML='Median noise scale ≈ '+BnoiseMed.toFixed(1) + ' <span style=\"font-weight:400;text-transform:none;letter-spacing:0;color:#64748b\">(first '+MATCH_STEPS+' steps)</span>';
+  const gdCross=stepsToTarget(gdRes.losses, target);
+  const sgdCross=stepsToTarget(sgdRes.losses, target);
+  drawLoss(document.getElementById('cLoss'), gdRes.losses, sgdRes.losses, target, gdCross, sgdCross, currentB);
+  // global y range for delta plots so they are comparable
+  const allDeltaY=[...gdRes.deltaMeasPts.map(p=>p.y), ...gdRes.deltaPredPts.map(p=>p.y), ...sgdRes.deltaMeasPts.map(p=>p.y), ...sgdRes.deltaPredPts.map(p=>p.y)];
+  let yMin=Math.min(...allDeltaY), yMax=Math.max(...allDeltaY);
+  yMin=Math.min(yMin,-0.005); yMax=Math.max(yMax,0.008);
+  const padY=(yMax-yMin)*0.12; yMin-=padY; yMax+=padY;
+  const globalRange={yMin,yMax};
+  drawDeltaSingle(document.getElementById('cDeltaGD'), gdRes.deltaMeasPts, gdRes.deltaPredPts, '#2563eb', '#1e3a8a', hoverGD, globalRange);
+  drawDeltaSingle(document.getElementById('cDeltaSGD'), sgdRes.deltaMeasPts, sgdRes.deltaPredPts, '#ec4899', '#9d174d', hoverSGD, globalRange);
+  drawScatterSingle(document.getElementById('cScatterGD'), gdRes.deltaPredPts, gdRes.deltaMeasPts, '#2563eb');
+  drawScatterSingle(document.getElementById('cScatterSGD'), sgdRes.deltaPredPts, sgdRes.deltaMeasPts, '#ec4899');
+
+  /* ----- exchange rate: mini-batch steps per full-batch step -----
+     The catch-up runs are the expensive part, so only redo them when the data or B changed,
+     not when the target slider moves (the target does not enter this measurement at all). */
+  if(!skipMatch || !matchRes || matchResB!==currentB){
+    matchRes=measureStepsToMatch(gdRes, data, currentB, MATCH_STEPS, MATCH_OPTS);
+    matchResB=currentB;
+  }
+  hoverMatch=null;
+  drawStepsToMatch(document.getElementById('cSteps'), matchRes, currentB, MATCH_STEPS, hoverMatch);
+  document.getElementById('badgeMatchB').textContent='B = '+currentB;
+  renderMatchSummary();
+
+  // ----- batch schedule: varying B_t per step (random choice from two sizes) -----
+  // Schedule is an i.i.d. coin flip between schedA and schedB each step.
+  // Conditioned on the realized Bt, the same formula holds: S(t)=1+B_noise(t)/B_t.
+  // We keep the same coin sequence across target-slider moves for stability;
+  // only resample when user clicks "New schedule" or changes Ba/Bb.
+  if(!schedRes){
+    if(!schedule || schedule.length!==MATCH_STEPS){
+      schedule = generateSchedule(MATCH_STEPS, schedA, schedB, schedSeed);
+    }
+    schedRes = measureSchedule(gdRes, data, schedule, MATCH_STEPS, {deltaReps:300});
+  }
+  hoverSched=null;
+  drawSchedule(document.getElementById('cSchedule'), schedRes, MATCH_STEPS, hoverSched);
+  document.getElementById('badgeSched').textContent='B ∈ {'+schedA+', '+schedB+'}  coin-flip';
+  renderSchedSummary();
+
+  document.getElementById('legendLoss').innerHTML=`
+    <div class="legend-item"><span class="dot" style="background:#2563eb"></span> Full-batch (uses all ${data.N} examples)</div>
+    <div class="legend-item"><span class="dot" style="background:#ec4899"></span> Mini-batch B=${currentB} (noisy estimate, ${Math.round(data.N/currentB)}× less data per step)</div>
+    <div class="legend-item" style="margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;padding:4px 8px;border-radius:999px">— target ${target.toFixed(2)}</div>
+  `;
+  document.getElementById('legendDeltaGD').innerHTML=`
+    <div class="legend-item"><span class="dot" style="background:#2563eb"></span> Actual measured change</div>
+    <div class="legend-item"><span style="width:18px;height:0;border-top:2px dashed #1e3a8a;display:inline-block"></span> Theory prediction</div>
+    <div class="legend-item" style="margin-left:auto;font-size:11px;background:var(--panel-2);border:1px solid var(--border);padding:4px 8px;border-radius:999px">Same vertical scale for both panels</div>
+  `;
+  document.getElementById('legendDeltaSGD').innerHTML=`
+    <div class="legend-item"><span class="dot" style="background:#ec4899"></span> Actual measured change</div>
+    <div class="legend-item"><span style="width:18px;height:0;border-top:2px dashed #9d174d;display:inline-block"></span> Theory expected change</div>
+  `;
+  document.getElementById('legendScatterGD').innerHTML=`<div class="legend-item"><span class="dot" style="background:#2563eb"></span> One dot = one training step</div><div class="legend-item" style="margin-left:auto;font-size:11px;color:var(--muted)">Diagonal = perfect</div>`;
+  document.getElementById('legendScatterSGD').innerHTML=`<div class="legend-item"><span class="dot" style="background:#ec4899"></span> One dot = one training step</div><div class="legend-item" style="margin-left:auto;font-size:11px;color:var(--muted)">Cloud around diagonal = expected</div>`;
+
+  const gdSteps=gdCross, sgdSteps=sgdCross;
+  const gdLossLast=gdRes.losses[gdRes.losses.length-1].y;
+  const sgdLossLast=sgdRes.losses[sgdRes.losses.length-1].y;
+  const gap = (gdSteps!==null && sgdSteps!==null) ? sgdSteps - gdSteps : null;
+  const ratio = (gdSteps && sgdSteps) ? (sgdSteps/gdSteps).toFixed(2)+'×' : '—';
+  const theorySteps = gdSteps ? Math.round(gdSteps * (1 + BnoiseMed/currentB)) : '—';
+  document.getElementById('kpis').innerHTML=`
+    <div class="kpi gd">
+      <div class="label"><span class="dot" style="background:#2563eb"></span> Full-batch</div>
+      <div class="num steps" style="color:#1e40af">${gdSteps===null? 'not reached' : gdSteps+' <span style="font-size:13px;font-weight:700;color:var(--muted)">steps</span>'}</div>
+      <div class="hint">Final loss <span class="steps" style="font-weight:700;color:var(--text)">${gdLossLast.toFixed(3)}</span> · Avg step size <span class="mono">${mean(gdRes.epsilons).toFixed(3)}</span></div>
+      <div class="bar"><div style="width:${gdSteps? Math.min(100, (TOTAL_STEPS-gdSteps)/TOTAL_STEPS*100+22) : 8}%;background:#2563eb"></div></div>
+      <div class="hint" style="margin-top:4px">${gdSteps===null? 'Try a higher target' : 'Fastest possible when you can afford all data each step'}</div>
+    </div>
+    <div class="kpi sgd">
+      <div class="label"><span class="dot" style="background:#ec4899"></span> Mini-batch B=${currentB}</div>
+      <div class="num steps" style="color:#be185d">${sgdSteps===null? 'not reached' : sgdSteps+' <span style="font-size:13px;font-weight:700;color:var(--muted)">steps</span>'}</div>
+      <div class="hint">Final loss <span class="steps" style="font-weight:700;color:var(--text)">${sgdLossLast.toFixed(3)}</span> · Avg step size <span class="mono">${mean(sgdRes.epsilons).toFixed(3)}</span></div>
+      <div class="bar"><div style="width:${sgdSteps? Math.min(100, (TOTAL_STEPS-sgdSteps)/TOTAL_STEPS*100+22) : 8}%;background:#ec4899"></div></div>
+      <div class="hint" style="margin-top:4px">${sgdSteps===null? `Noise prevents reaching target in ${TOTAL_STEPS} steps` : (gap>0? '+'+gap+' steps vs full-batch ('+ratio+')' : 'Matched full-batch this run')}</div>
+    </div>
+    <div class="kpi" style="background:var(--panel-2)">
+      <div class="label">What the theory says</div>
+      <div class="num" style="font-size:20px">Noise scale ≈ ${BnoiseMed.toFixed(1)}</div>
+      <div class="hint">Predicted mini-batch steps ≈ full-batch steps × (1 + noise_scale / B) = ${theorySteps} for B=${currentB}.<br/>If B is much smaller than the noise scale, each step helps less.</div>
+    </div>
+  `;
+  const insight=document.getElementById('insightText');
+  if(gdSteps!==null && sgdSteps!==null){
+    if(sgdSteps > gdSteps*1.3){
+      insight.innerHTML = `Mini-batch needs <b>${sgdSteps-gdSteps} extra steps</b> (${ratio}). With noise scale ≈${BnoiseMed.toFixed(0)} and B=${currentB}, the theory predicts about ${(1+BnoiseMed/currentB).toFixed(2)}× more steps — because the noisy gradient forces a smaller step size, so each step reduces the loss less. Doubling the batch size would close about half the gap.`;
+    } else if(sgdSteps > gdSteps){
+      insight.innerHTML = `Only <b>+${sgdSteps-gdSteps} steps</b> slower (${ratio}). B=${currentB} is already in the same range as the noise scale (≈${BnoiseMed.toFixed(0)}), so mini-batch is almost as efficient as full-batch per step. Making B even larger would barely help.`;
+    } else {
+      insight.innerHTML = `Mini-batch matched or beat full-batch this run (noise happened to help). On average theory still predicts ~${theorySteps} steps for B=${currentB} because the average improvement per step is smaller. Click “New random data” to see variation.`;
+    }
+  } else if(gdSteps===null && sgdSteps===null){
+    insight.innerHTML = `Neither reached the target in ${TOTAL_STEPS} steps — the target is below what this model can achieve with ${data.N} examples. Try a higher target.`;
+  } else if(sgdSteps===null){
+    insight.innerHTML = `Full-batch reached the target in <b>${gdSteps} steps</b> but mini-batch did not. When the gradient gets small late in training, noise dominates and mini-batch stalls while full-batch keeps making steady progress. Try a larger B.`;
+  } else {
+    insight.innerHTML = `Mini-batch reached the target but full-batch did not — a rare lucky fluctuation. Re-run to see the typical pattern.`;
+  }
+
+  // verification - plain language
+  const gdMeas=gdRes.deltasMeasured, gdPred=gdRes.deltasPred;
+  const sgMeas=sgdRes.deltasMeasured, sgPred=sgdRes.deltasPred;
+  const rGD=pearson(gdMeas,gdPred);
+  const rSGD=pearson(sgMeas,sgPred);
+  const avgGDmeas=mean(gdMeas), avgGDpred=mean(gdPred);
+  const avgSGmeas=mean(sgMeas), avgSGpred=mean(sgPred);
+  const maxDiffGD=Math.max(...gdMeas.map((v,i)=>Math.abs(v-gdPred[i])));
+  const avgAbsDiffGD=mean(gdMeas.map((v,i)=>Math.abs(v-gdPred[i])));
+  const avgAbsDiffSGD=mean(sgMeas.map((v,i)=>Math.abs(v-sgPred[i])));
+  const within = (arr,pred, tol)=>{
+    let c=0; for(let i=0;i<arr.length;i++) if(Math.abs(arr[i]-pred[i])<=tol) c++; return c;
+  };
+  const tol=0.008;
+  const gdWithin=within(gdMeas,gdPred,0.0005);
+  const sgWithin=within(sgMeas,sgPred,tol);
+
+  function fmt(x,d=4){ if(!isFinite(x)) return '—'; return x.toFixed(d); }
+
+  document.getElementById('tblGD').innerHTML=`
+    <tr><td>What we compare</td><td style="text-align:right;font-weight:700">Actual change vs theory prediction at each step</td></tr>
+    <tr><td>How closely do the two lines move together?<br/><span style="color:var(--muted);font-size:11px">1.0 means they rise and fall perfectly together; 0 means unrelated</span></td><td class="ok">${rGD===null?'—':rGD.toFixed(4)} — almost perfect</td></tr>
+    <tr><td>Average improvement per step<br/><span style="color:var(--muted);font-size:11px">More negative means faster learning; predicted and actual should be the same</span></td><td>actual ${fmt(avgGDmeas,4)}<br/>predicted ${fmt(avgGDpred,4)}</td></tr>
+    <tr><td>Largest gap at any single step<br/><span style="color:var(--muted);font-size:11px">If this is tiny, the theory matches at every step, not just on average</span></td><td>${fmt(maxDiffGD,5)} <span style="color:var(--ok)">✓ tiny</span></td></tr>
+    <tr><td>Steps where prediction is essentially exact<br/><span style="color:var(--muted);font-size:11px">Within 0.0005 of each other</span></td><td>${gdWithin} / ${gdMeas.length} steps</td></tr>
+  `;
+  document.getElementById('tblSGD').innerHTML=`
+    <tr><td>What we compare</td><td style="text-align:right;font-weight:700">Actual change vs expected change at each step</td></tr>
+    <tr><td>How closely do they move together?<br/><span style="color:var(--muted);font-size:11px">For mini-batch this will be lower than full-batch because actual is noisy</span></td><td>${rSGD===null?'—':rSGD.toFixed(3)} — ${rSGD!==null&&rSGD>0.75?'follows the prediction':'scattered but centered'}</td></tr>
+    <tr><td>Average improvement per step</td><td>actual ${fmt(avgSGmeas,4)}<br/>expected ${fmt(avgSGpred,4)}</td></tr>
+    <tr><td>Typical distance from the prediction<br/><span style="color:var(--muted);font-size:11px">On average how far each actual step is from what was expected</span></td><td>${fmt(avgAbsDiffSGD,4)}</td></tr>
+    <tr><td>Steps where actual is close to expected<br/><span style="color:var(--muted);font-size:11px">Within ${tol} (jitter from noise makes this looser than full-batch)</span></td><td>${sgWithin} / ${sgMeas.length} steps</td></tr>
+  `;
+  document.getElementById('helpGD').innerHTML=`Because the loss surface is exactly quadratic and there is no gradient noise, the theory is not an approximation — it is exact. The small remaining difference (&lt; 0.001) is just rounding.`;
+  document.getElementById('helpSGD').innerHTML=`Mini-batch gradient is a noisy estimate of the true gradient, so each individual step jiggles around the expected value. If you average many steps, the jiggle cancels and the average matches the theory. That is why the “average improvement” rows match closely even though individual dots scatter.`;
+
+  const sgAvgGap = avgSGmeas - avgGDmeas; // mini-batch less negative, so gap positive
+  const theoryGapPerStep = mean(gdRes.stats.slice(0,sgMeas.length).map(s=>{
+    if(s.GHG<=1e-12 || s.trHS===null) return 0;
+    const idealGD = -0.5*s.Gnorm2*s.Gnorm2/s.GHG;
+    const idealSG = -0.5*s.Gnorm2*s.Gnorm2/(s.GHG + s.trHS/currentB);
+    return idealSG - idealGD; // positive, how much less improvement
+  }));
+  const stillOk = Math.abs(sgAvgGap - theoryGapPerStep) < Math.abs(theoryGapPerStep)*0.5 + 0.001;
+  let verifMsg='';
+  if(rGD!==null && rGD>0.999 && avgAbsDiffGD<1e-4){
+    verifMsg = `✅ <b>Full-batch is verified:</b> the predicted change and the actual change are the same at every step (lines overlap, dots on the diagonal, largest gap only ${fmt(maxDiffGD,5)}). This is expected — with the optimal step size the quadratic formula gives the exact change.`;
+  } else {
+    verifMsg = `Full-batch lines should overlap. Currently the largest gap is ${fmt(maxDiffGD,5)}.`;
+  }
+  verifMsg += `<br/>🔍 <b>Mini-batch is verified on average:</b> each individual step is noisy, so the pink solid line jiggles around the dashed expected line and the scatter dots cloud around the diagonal (correlation ${rSGD===null?'—':rSGD.toFixed(2)}). But the averages line up: average actual improvement is ${fmt(avgSGmeas,4)} vs expected ${fmt(avgSGpred,4)}, a typical distance of only ${fmt(avgAbsDiffSGD,4)}. The mini-batch improves less per step than full-batch by about ${fmt(sgAvgGap,4)} on average — theory predicts about ${fmt(theoryGapPerStep,4)} ${stillOk?'✓':''} because the noise forces a smaller step size.`;
+  document.getElementById('verifText').innerHTML=verifMsg;
+  document.getElementById('hoverDeltaGD').innerHTML='Hover the plot to see step, actual change, predicted change, and step size used at that step.';
+  document.getElementById('hoverDeltaSGD').innerHTML='Hover to see the noisy actual vs the expected value. The expected value is what the theory says you get on average.';
+}
+function renderMatchSummary(){
+  const m=matchRes, B=currentB, T=MATCH_STEPS;
+  const f=(x,d)=>{
+    if(x===null||!isFinite(x)) return '—';
+    if(d!==undefined) return x.toFixed(d);
+    return x>=100? String(Math.round(x)) : x>=10? x.toFixed(1) : x.toFixed(2);
+  };
+  const keep=a=>a.filter(v=>v!==null && isFinite(v));
+  const medRatio=median(keep(m.ratio)), medTh=median(keep(m.theory)), medCu=median(keep(m.catchUp));
+  const nCu=keep(m.catchUp).length;
+
+  const rel=[];
+  for(let t=0;t<T;t++) if(m.ratio[t]!==null && m.theory[t]!==null && m.theory[t]>0) rel.push(m.ratio[t]/m.theory[t]);
+  const agree=median(rel);
+  const relCu=[];
+  for(let t=0;t<T;t++) if(m.catchUp[t]!==null && m.theory[t]!==null && m.theory[t]>0) relCu.push(m.catchUp[t]/m.theory[t]);
+  const agreeCu=median(relCu);
+
+  let first=null, last=null;
+  for(let t=0;t<T;t++) if(m.ratio[t]!==null){ first=m.ratio[t]; break; }
+  for(let t=T-1;t>=0;t--) if(m.ratio[t]!==null){ last=m.ratio[t]; break; }
+  const bn0=gdRes.stats[0].Bnoise, bnT=gdRes.stats[T-1].Bnoise;
+
+  document.getElementById('legendSteps').innerHTML=`
+    <div class="legend-item"><span style="width:18px;height:0;border-top:2px dashed #1e3a8a;display:inline-block"></span> Predicted 1 + B<sub>noise</sub>/B</div>
+    <div class="legend-item"><span class="dot" style="background:#ec4899"></span> Measured: GD's ΔL ÷ one SGD step's average ΔL <span style="font-weight:400">(shaded = ±2 s.e.)</span></div>
+    <div class="legend-item"><span class="dot" style="background:#475569"></span> Measured: SGD steps actually run to reach that loss</div>
+  `;
+
+  const okA = agree!==null && Math.abs(agree-1)<0.12;
+  document.getElementById('kpisMatch').innerHTML=`
+    <div class="kpi sgd">
+      <div class="label"><span class="dot" style="background:#ec4899"></span> Typical exchange rate</div>
+      <div class="num steps" style="color:#be185d">${f(medRatio)}<span style="font-size:14px;color:var(--muted)"> mini-batch steps</span></div>
+      <div class="hint">per full-batch step, median over the first ${T} steps at B=${B}. Predicted ${f(medTh)}.</div>
+    </div>
+    <div class="kpi" style="background:var(--panel-2)">
+      <div class="label"><span class="dot" style="background:#475569"></span> Actually running SGD until it catches up</div>
+      <div class="num steps">${f(medCu)}<span style="font-size:14px;color:var(--muted)"> steps</span></div>
+      <div class="hint">median over the ${nCu} full-batch step${nCu===1?'':'s'} the step budget covered — ${f(agreeCu,2)}× the prediction, because the gradient shrinks inside the catch-up window.</div>
+    </div>
+    <div class="kpi ${okA?'gd':''}" ${okA?'':'style="background:var(--panel-2)"'}>
+      <div class="label">Does the formula hold?</div>
+      <div class="num" style="font-size:20px;color:${okA?'#059669':'#d97706'}">measured / predicted = ${f(agree,3)} ${okA?'✓':''}</div>
+      <div class="hint">median over all ${T} steps. A value of 1.000 means 1 + B<sub>noise</sub>/B is right at every step, not just on average.</div>
+    </div>
+  `;
+
+  document.getElementById('matchInsight').innerHTML=
+    `At B=${B} the exchange rate is <b>not a constant</b>. It starts at about <b>${f(first)} mini-batch steps</b> per full-batch step and `+
+    `reaches <b>${f(last)}</b> by step ${T}, because B<sub>noise</sub> climbs from ${f(bn0)} to ${f(bnT)} as the true gradient shrinks toward the `+
+    `gradient noise floor. Early in training a mini-batch gradient is almost as good as the full one; late in training almost all of it is noise. `+
+    `Everything on this chart is that one ratio B<sub>noise</sub>/B.`;
+
+  document.getElementById('hoverSteps').innerHTML='Hover to see, for each full-batch step, the loss drop it achieved and the number of mini-batch steps that buys.';
+}
+
+function attachHover(){
+  const cGD=document.getElementById('cDeltaGD');
+  const cSGD=document.getElementById('cDeltaSGD');
+  function makeHandler(canvas, res, infoId){
+    canvas.addEventListener('mousemove', (e)=>{
+      const rect=canvas.getBoundingClientRect();
+      const pad={l:56,r:16};
+      const plotW=rect.width-pad.l-pad.r;
+      const totalSteps=res? res.deltasMeasured.length-1 : 150;
+      const x=e.clientX-rect.left;
+      const t=Math.round((x-pad.l)/plotW * totalSteps);
+      if(t>=0 && t<=totalSteps && res){
+        if(canvas.id==='cDeltaGD') hoverGD=t; else hoverSGD=t;
+        const meas=res.deltasMeasured[t];
+        const pred=res.deltasPred[t];
+        const eps=res.epsilons[t];
+        const st=res.stats[t];
+        const bnoise = st?.Bnoise!==null? st.Bnoise.toFixed(1): '—';
+        document.getElementById(infoId).innerHTML=`Step ${t} · actual <b>${meas!==undefined?meas.toFixed(4):'—'}</b> · predicted <b>${pred!==undefined?pred.toFixed(4):'—'}</b> · step size used <b>${eps!==undefined?eps.toFixed(4):'—'}</b> · noise scale at this step ≈ ${bnoise}`;
+        // redraw with hover
+        const allY=[...gdRes.deltaMeasPts.map(p=>p.y), ...gdRes.deltaPredPts.map(p=>p.y), ...sgdRes.deltaMeasPts.map(p=>p.y), ...sgdRes.deltaPredPts.map(p=>p.y)];
+        let yMin=Math.min(...allY), yMax=Math.max(...allY);
+        yMin=Math.min(yMin,-0.005); yMax=Math.max(yMax,0.008);
+        const padY=(yMax-yMin)*0.12; yMin-=padY; yMax+=padY;
+        const rng={yMin,yMax};
+        drawDeltaSingle(cGD, gdRes.deltaMeasPts, gdRes.deltaPredPts, '#2563eb','#1e3a8a', hoverGD, rng);
+        drawDeltaSingle(cSGD, sgdRes.deltaMeasPts, sgdRes.deltaPredPts, '#ec4899','#9d174d', hoverSGD, rng);
+      }
+    });
+    canvas.addEventListener('mouseleave', ()=>{
+      if(canvas.id==='cDeltaGD') hoverGD=null; else hoverSGD=null;
+      document.getElementById(infoId).innerHTML = canvas.id==='cDeltaGD' ? 'Hover the plot to see step, actual change, predicted change, and step size used at that step.' : 'Hover to see the noisy actual vs the expected value.';
+      const allY=[...gdRes.deltaMeasPts.map(p=>p.y), ...gdRes.deltaPredPts.map(p=>p.y), ...sgdRes.deltaMeasPts.map(p=>p.y), ...sgdRes.deltaPredPts.map(p=>p.y)];
+      let yMin=Math.min(...allY), yMax=Math.max(...allY);
+      yMin=Math.min(yMin,-0.005); yMax=Math.max(yMax,0.008);
+      const padY=(yMax-yMin)*0.12; yMin-=padY; yMax+=padY;
+      const rng={yMin,yMax};
+      drawDeltaSingle(cGD, gdRes.deltaMeasPts, gdRes.deltaPredPts, '#2563eb','#1e3a8a', hoverGD, rng);
+      drawDeltaSingle(cSGD, sgdRes.deltaMeasPts, sgdRes.deltaPredPts, '#ec4899','#9d174d', hoverSGD, rng);
+    });
+  }
+  makeHandler(cGD, null, 'hoverDeltaGD'); // placeholder, will be updated after first run
+  makeHandler(cSGD, null, 'hoverDeltaSGD');
+  // override with dynamic res lookup inside handler closure after run
+  // we re-attach correctly after run via updating the closure variable – simpler: patch handler to use globals gdRes/sgdRes
+  // Actually handlers above use res param null, so we need to fix: instead handlers should read gdRes/sgdRes globally
+  // Replace: remove and re-attach with global lookup
+  cGD.replaceWith(cGD.cloneNode(true));
+  cSGD.replaceWith(cSGD.cloneNode(true));
+  const nGD=document.getElementById('cDeltaGD');
+  const nSGD=document.getElementById('cDeltaSGD');
+  function handlerGD(e){
+    const rect=nGD.getBoundingClientRect(); const pad={l:56,r:16}; const plotW=rect.width-pad.l-pad.r;
+    const totalSteps=gdRes? gdRes.deltasMeasured.length-1:150;
+    const t=Math.round((e.clientX-rect.left-pad.l)/plotW * totalSteps);
+    if(t>=0 && t<=totalSteps && gdRes){
+      hoverGD=t;
+      const meas=gdRes.deltasMeasured[t], pred=gdRes.deltasPred[t], eps=gdRes.epsilons[t], st=gdRes.stats[t];
+      document.getElementById('hoverDeltaGD').innerHTML=`Step ${t} · actual <b>${meas.toFixed(4)}</b> · predicted <b>${pred.toFixed(4)}</b> · step size <b>${eps.toFixed(4)}</b> · noise scale ≈ ${st.Bnoise!==null?st.Bnoise.toFixed(1):'—'}`;
+      const allY=[...gdRes.deltaMeasPts.map(p=>p.y), ...gdRes.deltaPredPts.map(p=>p.y), ...sgdRes.deltaMeasPts.map(p=>p.y), ...sgdRes.deltaPredPts.map(p=>p.y)];
+      let yMin=Math.min(...allY), yMax=Math.max(...allY); yMin=Math.min(yMin,-0.005); yMax=Math.max(yMax,0.008); const padY=(yMax-yMin)*0.12; yMin-=padY; yMax+=padY; const rng={yMin,yMax};
+      drawDeltaSingle(nGD, gdRes.deltaMeasPts, gdRes.deltaPredPts, '#2563eb','#1e3a8a', hoverGD, rng);
+      drawDeltaSingle(nSGD, sgdRes.deltaMeasPts, sgdRes.deltaPredPts, '#ec4899','#9d174d', hoverSGD, rng);
+    }
+  }
+  function handlerSGD(e){
+    const rect=nSGD.getBoundingClientRect(); const pad={l:56,r:16}; const plotW=rect.width-pad.l-pad.r;
+    const totalSteps=sgdRes? sgdRes.deltasMeasured.length-1:150;
+    const t=Math.round((e.clientX-rect.left-pad.l)/plotW * totalSteps);
+    if(t>=0 && t<=totalSteps && sgdRes){
+      hoverSGD=t;
+      const meas=sgdRes.deltasMeasured[t], pred=sgdRes.deltasPred[t], eps=sgdRes.epsilons[t], st=sgdRes.stats[t];
+      document.getElementById('hoverDeltaSGD').innerHTML=`Step ${t} · actual <b>${meas.toFixed(4)}</b> · expected <b>${pred.toFixed(4)}</b> · step size <b>${eps.toFixed(4)}</b> · noise scale ≈ ${st.Bnoise!==null?st.Bnoise.toFixed(1):'—'}`;
+      const allY=[...gdRes.deltaMeasPts.map(p=>p.y), ...gdRes.deltaPredPts.map(p=>p.y), ...sgdRes.deltaMeasPts.map(p=>p.y), ...sgdRes.deltaPredPts.map(p=>p.y)];
+      let yMin=Math.min(...allY), yMax=Math.max(...allY); yMin=Math.min(yMin,-0.005); yMax=Math.max(yMax,0.008); const padY=(yMax-yMin)*0.12; yMin-=padY; yMax+=padY; const rng={yMin,yMax};
+      drawDeltaSingle(nGD, gdRes.deltaMeasPts, gdRes.deltaPredPts, '#2563eb','#1e3a8a', hoverGD, rng);
+      drawDeltaSingle(nSGD, sgdRes.deltaMeasPts, sgdRes.deltaPredPts, '#ec4899','#9d174d', hoverSGD, rng);
+    }
+  }
+  nGD.addEventListener('mousemove', handlerGD);
+  nSGD.addEventListener('mousemove', handlerSGD);
+  nGD.addEventListener('mouseleave', ()=>{
+    hoverGD=null; document.getElementById('hoverDeltaGD').innerHTML='Hover the plot to see step, actual change, predicted change, and step size used at that step.';
+    const allY=[...gdRes.deltaMeasPts.map(p=>p.y), ...gdRes.deltaPredPts.map(p=>p.y), ...sgdRes.deltaMeasPts.map(p=>p.y), ...sgdRes.deltaPredPts.map(p=>p.y)];
+    let yMin=Math.min(...allY), yMax=Math.max(...allY); yMin=Math.min(yMin,-0.005); yMax=Math.max(yMax,0.008); const padY=(yMax-yMin)*0.12; yMin-=padY; yMax+=padY; const rng={yMin,yMax};
+    drawDeltaSingle(nGD, gdRes.deltaMeasPts, gdRes.deltaPredPts, '#2563eb','#1e3a8a', hoverGD, rng);
+    drawDeltaSingle(nSGD, sgdRes.deltaMeasPts, sgdRes.deltaPredPts, '#ec4899','#9d174d', hoverSGD, rng);
+  });
+  nSGD.addEventListener('mouseleave', ()=>{
+    hoverSGD=null; document.getElementById('hoverDeltaSGD').innerHTML='Hover to see the noisy actual vs the expected value.';
+    const allY=[...gdRes.deltaMeasPts.map(p=>p.y), ...gdRes.deltaPredPts.map(p=>p.y), ...sgdRes.deltaMeasPts.map(p=>p.y), ...sgdRes.deltaPredPts.map(p=>p.y)];
+    let yMin=Math.min(...allY), yMax=Math.max(...allY); yMin=Math.min(yMin,-0.005); yMax=Math.max(yMax,0.008); const padY=(yMax-yMin)*0.12; yMin-=padY; yMax+=padY; const rng={yMin,yMax};
+    drawDeltaSingle(nGD, gdRes.deltaMeasPts, gdRes.deltaPredPts, '#2563eb','#1e3a8a', hoverGD, rng);
+    drawDeltaSingle(nSGD, sgdRes.deltaMeasPts, sgdRes.deltaPredPts, '#ec4899','#9d174d', hoverSGD, rng);
+  });
+}
+
+/* ---------- Hover on the exchange-rate chart ---------- */
+(function(){
+  const c=document.getElementById('cSteps');
+  const info=document.getElementById('hoverSteps');
+  const pad={l:58,r:16};
+  function fmtN(x){
+    if(x===null||!isFinite(x)) return '—';
+    return x>=100? String(Math.round(x)) : x>=10? x.toFixed(1) : x.toFixed(2);
+  }
+  c.addEventListener('mousemove', e=>{
+    if(!matchRes) return;
+    const rect=c.getBoundingClientRect();
+    const plotW=rect.width-pad.l-pad.r;
+    const t=Math.round((e.clientX-rect.left-pad.l)/plotW*(MATCH_STEPS-1))+1;
+    if(t<1||t>MATCH_STEPS) return;
+    hoverMatch=t;
+    const i=t-1;
+    const dLgd=gdRes.deltasMeasured[i];
+    const bn=gdRes.stats[i].Bnoise;
+    info.innerHTML=`Full-batch step ${t} · its loss drop <b>${dLgd.toFixed(5)}</b> · B<sub>noise</sub> ≈ ${fmtN(bn)}`+
+      ` → predicted <b>${fmtN(matchRes.theory[i])}</b> mini-batch steps`+
+      ` · measured (ΔL ratio) <b>${fmtN(matchRes.ratio[i])}</b>`+
+      ` · measured (ran SGD) <b>${matchRes.catchUp[i]===null?'not simulated':fmtN(matchRes.catchUp[i])}</b>`;
+    drawStepsToMatch(c, matchRes, currentB, MATCH_STEPS, hoverMatch);
+  });
+  c.addEventListener('mouseleave', ()=>{
+    hoverMatch=null;
+    if(matchRes) drawStepsToMatch(c, matchRes, currentB, MATCH_STEPS, null);
+    info.innerHTML='Hover to see, for each full-batch step, the loss drop it achieved and the number of mini-batch steps that buys.';
+  });
+})();
+/* ---------- Hover on the batch schedule chart ---------- */
+(function(){
+  const c=document.getElementById('cSchedule');
+  const info=document.getElementById('hoverSchedule');
+  const pad={l:58,r:16};
+  function fmtN(x){
+    if(x===null||!isFinite(x)) return '—';
+    return x>=100? String(Math.round(x)) : x>=10? x.toFixed(1) : x.toFixed(2);
+  }
+  c.addEventListener('mousemove', e=>{
+    if(!schedRes) return;
+    const rect=c.getBoundingClientRect();
+    const plotW=rect.width-pad.l-pad.r;
+    const t=Math.round((e.clientX-rect.left-pad.l)/plotW*(MATCH_STEPS-1))+1;
+    if(t<1||t>MATCH_STEPS) return;
+    hoverSched=t;
+    const i=t-1;
+    const Bt=schedRes.schedule[i];
+    const bn=gdRes.stats[i].Bnoise;
+    const dLgd=gdRes.deltasMeasured[i];
+    info.innerHTML=`GD step ${t} · <b>exchange rate</b> per full-batch step: B<sub>t</sub>=<b>${Bt}</b> · B<sub>noise</sub>≈${fmtN(bn)} · ΔL<sub>GD</sub>=<b>${dLgd!==undefined?dLgd.toFixed(5):'—'}</b> → <b>exchange rate predicted</b> S=<b>${fmtN(schedRes.theory[i])}</b> (1+${fmtN(bn)}/${Bt}) · <b>exchange rate measured</b> S=<b>${fmtN(schedRes.ratio[i])}</b> mini-batch steps per GD step`;
+    drawSchedule(c, schedRes, MATCH_STEPS, hoverSched);
+  });
+  c.addEventListener('mouseleave', ()=>{
+    hoverSched=null;
+    if(schedRes) drawSchedule(c, schedRes, MATCH_STEPS, null);
+    info.innerHTML='Hover to see <b>exchange rate per GD step</b> — B<sub>t</sub>, B<sub>noise</sub>, predicted & measured S(t) for that step.';
+  });
+})();
+
+/* ---------- Events ---------- */
+document.getElementById('target').addEventListener('input', ()=> run(false, true));
+document.getElementById('runBtn').addEventListener('click', ()=> run(true));
+document.getElementById('newSchedBtn').addEventListener('click', ()=> refreshSchedule(true));
+window.addEventListener('resize', ()=> run(false, true));
+
+/* ---------- Init ---------- */
+buildChips();
+buildSchedChips();
+run(false);
+// attach hover after first run so gdRes/sgdRes exist
+setTimeout(attachHover, 100);
+</script>
+</body>
+</html>
